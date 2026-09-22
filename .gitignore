@@ -1,0 +1,27 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Generated deployment state (contains Retell resource ids)
+.frontdesk.json
+.frontdesk-components.json
+web/call.json
+
+# Your account's real unit prices — keep them out of the repo
+pricing.json
+
+# Cached Retell API responses (see frontdesk/snapshot.py)
+.cache/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# OS
+.DS_Store

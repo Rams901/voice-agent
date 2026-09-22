@@ -1,0 +1,1585 @@
+{
+  "conversation_flow_id": "conversation_flow_e36cda2ff5ff",
+  "version": 0,
+  "last_modification_timestamp": 1790118160666,
+  "global_prompt": "You are the service assistant for {{dealer_name}} ({{dealer_id}}), a franchised dealership in {{country}}. Speak {{language}} in a {{tone}} manner. This is a live phone call: keep replies to one or two short sentences, never read out lists of more than three items, and never use formatting.\n\nOpening hours: {{opening_hours}}. Services offered: {{services_list}}.\n\nIt is currently {{current_time}}. Treat that as the only source of truth for today's date: your own sense of the date is out of date, and a wrong weekday puts a caller in the diary on the wrong day.\n\nHow you must behave:\n- You are the front desk, not the system of record. Never state or imply a vehicle, price, slot or booking unless a tool returned it in this call.\n- Never invent or \"correct\" a registration plate, VIN, phone number or date. Spell identifiers back phonetically before relying on them.\n- When a tool result tells you to confirm something with the caller, do it before moving on.\n- Commit nothing until the caller has clearly confirmed the details. If they sound unsure, ask again rather than assuming a yes.\n- Never take card or bank details, and never discuss payment amounts beyond what a tool reported. Offer a transfer instead.\n- If the caller is frustrated, repeats themselves, or asks for a person, stop the current stage and transfer to a human \u2014 do not keep retrying.\n- If you cannot resolve something, say so plainly, and transfer. Do not guess.",
+  "nodes": [
+    {
+      "skippable": false,
+      "edges": [
+        {
+          "id": "consent_required",
+          "transition_condition": {
+            "operator": "&&",
+            "type": "equation",
+            "equations": [
+              {
+                "operator": "==",
+                "left": "{{requires_recording_consent}}",
+                "right": "true"
+              }
+            ]
+          },
+          "destination_node_id": "greet_consent"
+        }
+      ],
+      "name": "Is recording consent required?",
+      "id": "consent_gate",
+      "type": "branch",
+      "else_edge": {
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        },
+        "id": "consent_not_required",
+        "destination_node_id": "greet_open"
+      }
+    },
+    {
+      "skippable": false,
+      "else_edge": {
+        "id": "greet_consent_else",
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        },
+        "destination_node_id": "consent_retry"
+      },
+      "type": "conversation",
+      "name": "Greet and ask to record",
+      "instruction": {
+        "text": "This is the first thing the caller hears. In one short sentence, greet them as the {{dealer_name}} service department, and in the same breath ask their permission to record the call for quality and training. Then stop talking so they can answer. Do not ask what they need yet, and ask for no details.",
+        "type": "prompt"
+      },
+      "edges": [
+        {
+          "transition_condition": {
+            "prompt": "The caller has clearly agreed to the call being recorded.",
+            "type": "prompt"
+          },
+          "id": "consent_yes",
+          "destination_node_id": "services_intro"
+        },
+        {
+          "destination_node_id": "consent_refused",
+          "id": "consent_no",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller has clearly refused, or does not agree, to the call being recorded."
+          }
+        }
+      ],
+      "id": "greet_consent"
+    },
+    {
+      "name": "Greet",
+      "instruction": {
+        "type": "prompt",
+        "text": "Greet the caller as the {{dealer_name}} service department in one short sentence, and stop talking so they can respond. Do not ask for any details yet."
+      },
+      "always_edge": {
+        "id": "greet_open_always",
+        "destination_node_id": "services_intro",
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Always"
+        }
+      },
+      "skippable": false,
+      "id": "greet_open",
+      "type": "conversation"
+    },
+    {
+      "else_edge": {
+        "id": "consent_retry_else",
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        },
+        "destination_node_id": "consent_refused"
+      },
+      "skippable": false,
+      "name": "Ask about recording once more",
+      "type": "conversation",
+      "instruction": {
+        "text": "You did not get a clear yes or no about recording. Ask once more, plainly and briefly \u2014 you just need a yes or a no. Do not move on to anything else until you have one.",
+        "type": "prompt"
+      },
+      "id": "consent_retry",
+      "edges": [
+        {
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller has now clearly agreed to the call being recorded."
+          },
+          "id": "consent_retry_yes",
+          "destination_node_id": "services_intro"
+        },
+        {
+          "transition_condition": {
+            "prompt": "The caller has now clearly refused, or still will not agree after being asked a second time.",
+            "type": "prompt"
+          },
+          "id": "consent_retry_no",
+          "destination_node_id": "consent_refused"
+        }
+      ]
+    },
+    {
+      "edges": [
+        {
+          "destination_node_id": "flag_and_handoff",
+          "id": "refused_human",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller wants a person, or wants to be called back."
+          }
+        }
+      ],
+      "else_edge": {
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        },
+        "id": "consent_refused_else",
+        "destination_node_id": "wrap_up"
+      },
+      "skippable": false,
+      "id": "consent_refused",
+      "instruction": {
+        "text": "The caller does not agree to the call being recorded. Do not argue, and do not carry on as though they had agreed. Say you are not able to continue on this line without recording, apologise once, and offer to put them through to the service team or to have someone call them back.",
+        "type": "prompt"
+      },
+      "type": "conversation",
+      "name": "Consent declined"
+    },
+    {
+      "type": "conversation",
+      "id": "services_intro",
+      "name": "What we can help with",
+      "instruction": {
+        "text": "Briefly say what you can help with today, in one or two sentences: booking, moving or cancelling a service, MOT, repair or diagnostic appointment; arranging a loan or rental car; and questions about an invoice, a payment or a warranty. Then ask which of those they need, and stop talking so they can answer.",
+        "type": "prompt"
+      },
+      "skippable": false,
+      "edges": [
+        {
+          "destination_node_id": "check_booking_capability",
+          "id": "services_booking",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller wants to book, move or cancel a service, MOT, repair or diagnostic appointment."
+          }
+        },
+        {
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller's main request is about a rental car, loan car or courtesy car."
+          },
+          "destination_node_id": "rental_intro",
+          "id": "services_rental"
+        },
+        {
+          "id": "services_billing",
+          "transition_condition": {
+            "prompt": "The caller is asking about an invoice, a payment, a refund, a warranty claim or has a complaint.",
+            "type": "prompt"
+          },
+          "destination_node_id": "billing_intro"
+        },
+        {
+          "id": "services_human",
+          "destination_node_id": "flag_and_handoff",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller asks for a human, or is clearly frustrated or angry and does not want to continue with you."
+          }
+        }
+      ],
+      "else_edge": {
+        "id": "services_intro_else",
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        },
+        "destination_node_id": "fallback_help"
+      }
+    },
+    {
+      "type": "conversation",
+      "else_edge": {
+        "destination_node_id": "wrap_up",
+        "id": "fallback_help_else",
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        }
+      },
+      "name": "Handle anything else",
+      "id": "fallback_help",
+      "edges": [
+        {
+          "id": "fallback_services",
+          "destination_node_id": "services_intro",
+          "transition_condition": {
+            "prompt": "The caller's request turns out to be a booking, a rental or a billing question after all.",
+            "type": "prompt"
+          }
+        },
+        {
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller wants a person, or you could not answer their question."
+          },
+          "id": "fallback_human",
+          "destination_node_id": "flag_and_handoff"
+        }
+      ],
+      "skippable": false,
+      "instruction": {
+        "type": "prompt",
+        "text": "Answer the caller's question briefly using only the dealership information you were given. If you do not know, say you cannot check that and offer to put them through to the service team."
+      }
+    },
+    {
+      "id": "check_booking_capability",
+      "else_edge": {
+        "id": "cannot_book",
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        },
+        "destination_node_id": "booking_unavailable"
+      },
+      "name": "Can this dealer book?",
+      "edges": [
+        {
+          "transition_condition": {
+            "operator": "&&",
+            "type": "equation",
+            "equations": [
+              {
+                "operator": "==",
+                "left": "{{dealer_can_book}}",
+                "right": "true"
+              }
+            ]
+          },
+          "destination_node_id": "capture_plate",
+          "id": "can_book"
+        }
+      ],
+      "skippable": false,
+      "type": "branch"
+    },
+    {
+      "else_edge": {
+        "destination_node_id": "flag_and_handoff",
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        },
+        "id": "booking_unavailable_else"
+      },
+      "type": "conversation",
+      "instruction": {
+        "text": "Say honestly that you cannot put a booking directly into this dealer's system, and that you do not want to promise something you cannot keep. Offer to take the details down and have the service team call back, or to put the caller through now. Do not take the booking as though it were confirmed.",
+        "type": "prompt"
+      },
+      "skippable": false,
+      "edges": [
+        {
+          "id": "unavailable_transfer",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller wants a person now, or you have finished taking the callback details."
+          },
+          "destination_node_id": "flag_and_handoff"
+        }
+      ],
+      "id": "booking_unavailable",
+      "name": "Booking not supported"
+    },
+    {
+      "skippable": false,
+      "id": "capture_plate",
+      "type": "conversation",
+      "instruction": {
+        "text": "Ask for the registration plate of the vehicle. If they start to give a long description, gently steer back to the plate. If they sound unsure, ask them to spell it out, letter by letter and number by number, using words for the letters if that helps. Do not repeat the plate back yet and do not comment on whether it looks right. Once you have it, stop talking.",
+        "type": "prompt"
+      },
+      "always_edge": {
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Always"
+        },
+        "id": "capture_plate_always",
+        "destination_node_id": "validate_plate"
+      },
+      "name": "Capture registration"
+    },
+    {
+      "skippable": false,
+      "instruction": {
+        "text": "Clicking sound only \u2014 say nothing. Report the exact result to no one; the next step decides what the caller hears. When you call this, pass the registration exactly as the caller just said or spelled it as the value \u2014 do not tidy it up or correct it first.",
+        "type": "prompt"
+      },
+      "else_edge": {
+        "destination_node_id": "plate_repair",
+        "id": "validate_plate_else",
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        }
+      },
+      "name": "Validate registration",
+      "tool_type": "local",
+      "type": "function",
+      "id": "validate_plate",
+      "edges": [
+        {
+          "id": "validate_ok",
+          "transition_condition": {
+            "operator": "&&",
+            "equations": [
+              {
+                "left": "{{identifier_valid}}",
+                "operator": "==",
+                "right": "true"
+              }
+            ],
+            "type": "equation"
+          },
+          "destination_node_id": "readback_plate"
+        }
+      ],
+      "tool_id": "tool_validate_identifier",
+      "wait_for_result": true
+    },
+    {
+      "name": "Re-capture registration",
+      "instruction": {
+        "type": "prompt",
+        "text": "The plate did not pass validation. Do not tell the caller 'invalid'. If the validation result listed uncertain positions, ask only about those characters, one at a time, using words for letters (for example: 'was that C for Charlie or D for Delta?'). Otherwise ask them to spell the whole plate again, slowly, letter by letter and number by number. If you have already tried this 3 times and it still is not working, stop trying and offer to put them through to the service team or send a text link so they can type the plate instead."
+      },
+      "id": "plate_repair",
+      "edges": [
+        {
+          "transition_condition": {
+            "prompt": "The caller has just given you a registration plate to try.",
+            "type": "prompt"
+          },
+          "destination_node_id": "validate_plate",
+          "id": "repair_retry"
+        },
+        {
+          "id": "repair_give_up",
+          "destination_node_id": "flag_and_handoff",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "You have already attempted this 3 times, or the caller is becoming frustrated, or they have asked for a person or for a text link instead."
+          }
+        }
+      ],
+      "skippable": false,
+      "else_edge": {
+        "id": "plate_repair_else",
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        },
+        "destination_node_id": "flag_and_handoff"
+      },
+      "type": "conversation"
+    },
+    {
+      "else_edge": {
+        "id": "readback_plate_else",
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        },
+        "destination_node_id": "plate_repair"
+      },
+      "instruction": {
+        "text": "Read the validated plate back to the caller slowly and phonetically, exactly as given in {{identifier_readback}}. Then ask them to confirm it is correct. Do not accept an unsure answer, a sigh, or a hesitant 'I think so' as confirmation \u2014 ask again clearly. Never claim the plate is correct; only ask whether you heard it correctly.",
+        "type": "prompt"
+      },
+      "edges": [
+        {
+          "destination_node_id": "lookup_vehicle",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller has clearly and unambiguously confirmed the registration plate you read back is correct."
+          },
+          "id": "readback_ok"
+        },
+        {
+          "id": "readback_wrong",
+          "destination_node_id": "plate_repair",
+          "transition_condition": {
+            "prompt": "The caller says the plate is wrong, changes a character, or sounds uncertain rather than confirming clearly.",
+            "type": "prompt"
+          }
+        }
+      ],
+      "type": "conversation",
+      "skippable": false,
+      "name": "Read back registration",
+      "id": "readback_plate"
+    },
+    {
+      "id": "lookup_vehicle",
+      "tool_type": "local",
+      "wait_for_result": true,
+      "instruction": {
+        "type": "prompt",
+        "text": "Say you are just pulling up their vehicle."
+      },
+      "edges": [
+        {
+          "destination_node_id": "capture_service",
+          "transition_condition": {
+            "type": "equation",
+            "operator": "&&",
+            "equations": [
+              {
+                "left": "{{vehicle_found}}",
+                "operator": "==",
+                "right": "true"
+              },
+              {
+                "right": "false",
+                "left": "{{vehicle_ambiguous}}",
+                "operator": "=="
+              }
+            ]
+          },
+          "id": "lookup_single"
+        },
+        {
+          "destination_node_id": "disambiguate_vehicle",
+          "id": "lookup_ambiguous",
+          "transition_condition": {
+            "operator": "&&",
+            "type": "equation",
+            "equations": [
+              {
+                "operator": "==",
+                "right": "true",
+                "left": "{{vehicle_ambiguous}}"
+              }
+            ]
+          }
+        }
+      ],
+      "else_edge": {
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        },
+        "id": "lookup_vehicle_else",
+        "destination_node_id": "vehicle_not_found"
+      },
+      "name": "Look up vehicle",
+      "type": "function",
+      "skippable": false,
+      "tool_id": "tool_lookup_vehicle"
+    },
+    {
+      "type": "conversation",
+      "id": "disambiguate_vehicle",
+      "name": "Disambiguate vehicle",
+      "instruction": {
+        "type": "prompt",
+        "text": "More than one vehicle is registered to that plate. Read the caller the options in {{vehicle_options}} and ask which one they mean. Offer at most three, and if they cannot tell, offer to transfer."
+      },
+      "else_edge": {
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        },
+        "id": "disambiguate_vehicle_else",
+        "destination_node_id": "flag_and_handoff"
+      },
+      "edges": [
+        {
+          "transition_condition": {
+            "prompt": "The caller has chosen one of the vehicles you listed.",
+            "type": "prompt"
+          },
+          "destination_node_id": "capture_service",
+          "id": "disambig_ok"
+        }
+      ],
+      "skippable": false
+    },
+    {
+      "edges": [
+        {
+          "destination_node_id": "plate_repair",
+          "id": "notfound_retry",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller wants to give the registration plate again."
+          }
+        },
+        {
+          "id": "notfound_continue",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller says it is a new vehicle or a new customer and wants to go ahead with a booking anyway."
+          },
+          "destination_node_id": "capture_service"
+        },
+        {
+          "id": "notfound_transfer",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller wants a person, or the plate is not on record and they cannot proceed."
+          },
+          "destination_node_id": "flag_and_handoff"
+        }
+      ],
+      "id": "vehicle_not_found",
+      "skippable": false,
+      "type": "conversation",
+      "instruction": {
+        "text": "That plate is not on the dealer's records. Tell the caller you could not find it, and check once whether you heard it correctly by reading {{identifier_normalised}} back. Offer to try a different plate, to continue as a new customer, or to transfer.",
+        "type": "prompt"
+      },
+      "name": "Plate not on record",
+      "else_edge": {
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        },
+        "destination_node_id": "flag_and_handoff",
+        "id": "vehicle_not_found_else"
+      }
+    },
+    {
+      "instruction": {
+        "type": "prompt",
+        "text": "You are booking for {{vehicle_summary}}. Ask what the vehicle is in for, and whether any warning light is showing. Match it to one of these services where you can: {{services_list}}. Ask once whether the caller will wait on site, needs a loan car, or wants the car collected. A loan car can be arranged. Do not quote a price \u2014 say the team will confirm the cost. Then move on."
+      },
+      "id": "capture_service",
+      "skippable": false,
+      "name": "Capture service need",
+      "always_edge": {
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Always"
+        },
+        "id": "capture_service_always",
+        "destination_node_id": "capture_timing"
+      },
+      "type": "conversation"
+    },
+    {
+      "name": "Capture preferred timing",
+      "instruction": {
+        "type": "prompt",
+        "text": "Here is the next two weeks, with today marked:\n{{current_calendar}}\nAsk what day suits them and whether they prefer morning or afternoon. Resolve what they say against that calendar \u2014 if they say 'next week' or 'Tuesday', work out the actual dates from the list above and say the dates back to them. Never calculate a date yourself and never guess the day of the week. Turn it into an ISO date range and do not confirm anything yet; tell them what you are checking."
+      },
+      "always_edge": {
+        "id": "capture_timing_always",
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Always"
+        },
+        "destination_node_id": "check_availability"
+      },
+      "skippable": false,
+      "id": "capture_timing",
+      "type": "conversation"
+    },
+    {
+      "name": "Check availability",
+      "else_edge": {
+        "id": "check_availability_else",
+        "destination_node_id": "no_slots",
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        }
+      },
+      "skippable": false,
+      "edges": [
+        {
+          "destination_node_id": "offer_slots",
+          "transition_condition": {
+            "operator": "&&",
+            "equations": [
+              {
+                "left": "{{slots_available}}",
+                "right": "0",
+                "operator": ">"
+              }
+            ],
+            "type": "equation"
+          },
+          "id": "slots_ok"
+        }
+      ],
+      "id": "check_availability",
+      "type": "function",
+      "wait_for_result": true,
+      "tool_type": "local",
+      "instruction": {
+        "text": "Say you are checking the diary.",
+        "type": "prompt"
+      },
+      "tool_id": "tool_check_availability"
+    },
+    {
+      "type": "conversation",
+      "name": "No slots in range",
+      "edges": [
+        {
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller has given a different date range to check."
+          },
+          "destination_node_id": "check_availability",
+          "id": "noslots_retry"
+        },
+        {
+          "id": "noslots_callback",
+          "transition_condition": {
+            "prompt": "The caller wants a callback or a person instead.",
+            "type": "prompt"
+          },
+          "destination_node_id": "flag_and_handoff"
+        }
+      ],
+      "else_edge": {
+        "destination_node_id": "flag_and_handoff",
+        "id": "no_slots_else",
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        }
+      },
+      "instruction": {
+        "text": "Nothing is free in that range. Say so, then offer to look at the following week, or to take their number and have the service team call them back. Never invent a slot.",
+        "type": "prompt"
+      },
+      "id": "no_slots",
+      "skippable": false
+    },
+    {
+      "type": "conversation",
+      "instruction": {
+        "text": "Offer at most three of the times in {{slots}}, reading them as a human would ('Tuesday the 14th at half past eight in the morning'). Ask which suits best. Only offer times that appear in {{slots}}.",
+        "type": "prompt"
+      },
+      "edges": [
+        {
+          "transition_condition": {
+            "prompt": "The caller has chosen one of the times you offered.",
+            "type": "prompt"
+          },
+          "destination_node_id": "confirm_booking",
+          "id": "slot_chosen"
+        }
+      ],
+      "name": "Offer slots",
+      "else_edge": {
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        },
+        "id": "offer_slots_else",
+        "destination_node_id": "capture_timing"
+      },
+      "skippable": false,
+      "id": "offer_slots"
+    },
+    {
+      "id": "confirm_booking",
+      "edges": [
+        {
+          "destination_node_id": "create_appointment",
+          "id": "confirm_yes",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller has clearly and unambiguously confirmed every detail you read back, with no changes."
+          }
+        },
+        {
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller wants to change the service, the vehicle or the transport arrangement."
+          },
+          "id": "confirm_change",
+          "destination_node_id": "capture_service"
+        },
+        {
+          "id": "confirm_retime",
+          "destination_node_id": "capture_timing",
+          "transition_condition": {
+            "prompt": "The caller wants a different day or time.",
+            "type": "prompt"
+          }
+        }
+      ],
+      "instruction": {
+        "type": "prompt",
+        "text": "Read the whole booking back in one short pass: the vehicle, the service, the chosen day and time, and the transport arrangement. Then ask a clear yes/no question. Do not proceed on a hesitant or partial answer \u2014 ask them to confirm the specific detail you are unsure about."
+      },
+      "type": "conversation",
+      "name": "Confirm everything",
+      "else_edge": {
+        "destination_node_id": "capture_timing",
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        },
+        "id": "confirm_booking_else"
+      },
+      "skippable": false
+    },
+    {
+      "id": "create_appointment",
+      "edges": [
+        {
+          "transition_condition": {
+            "operator": "&&",
+            "type": "equation",
+            "equations": [
+              {
+                "operator": "==",
+                "left": "{{booking_confirmed}}",
+                "right": "true"
+              }
+            ]
+          },
+          "id": "create_ok",
+          "destination_node_id": "verify_write"
+        },
+        {
+          "id": "create_pending",
+          "destination_node_id": "booking_pending",
+          "transition_condition": {
+            "operator": "&&",
+            "type": "equation",
+            "equations": [
+              {
+                "left": "{{booking_pending}}",
+                "right": "true",
+                "operator": "=="
+              }
+            ]
+          }
+        }
+      ],
+      "type": "function",
+      "wait_for_result": true,
+      "skippable": false,
+      "tool_id": "tool_create_appointment",
+      "else_edge": {
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        },
+        "destination_node_id": "booking_failed",
+        "id": "create_appointment_else"
+      },
+      "tool_type": "local",
+      "instruction": {
+        "type": "prompt",
+        "text": "Say you are putting it in the diary now. Pass the service being booked, the exact start time the caller chose as an ISO date-time, and how they will get moving while the car is in."
+      },
+      "name": "Create appointment"
+    },
+    {
+      "id": "booking_pending",
+      "edges": [
+        {
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller wants a person, or wants the booking confirmed now."
+          },
+          "destination_node_id": "flag_and_handoff",
+          "id": "pending_transfer"
+        }
+      ],
+      "type": "conversation",
+      "name": "Booking pending confirmation",
+      "else_edge": {
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        },
+        "destination_node_id": "wrap_up",
+        "id": "booking_pending_else"
+      },
+      "skippable": false,
+      "instruction": {
+        "text": "Tell the caller you have put the request in, but the dealer's system confirms these in the background, so it is not guaranteed yet. Do not say 'booked' or 'confirmed'. Say a member of the service team will text them to confirm the time shortly, and give them the reference if one was returned. If they need certainty now, offer to put them through.",
+        "type": "prompt"
+      }
+    },
+    {
+      "id": "verify_write",
+      "edges": [
+        {
+          "destination_node_id": "booking_done",
+          "id": "verify_ok",
+          "transition_condition": {
+            "type": "equation",
+            "operator": "&&",
+            "equations": [
+              {
+                "right": "true",
+                "operator": "==",
+                "left": "{{write_verified}}"
+              }
+            ]
+          }
+        }
+      ],
+      "else_edge": {
+        "id": "verify_write_else",
+        "destination_node_id": "booking_failed",
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        }
+      },
+      "skippable": false,
+      "tool_id": "tool_verify_appointment",
+      "type": "function",
+      "tool_type": "local",
+      "wait_for_result": true,
+      "name": "Verify the write",
+      "instruction": {
+        "text": "Say nothing while this runs.",
+        "type": "prompt"
+      }
+    },
+    {
+      "edges": [
+        {
+          "destination_node_id": "rental_intro",
+          "id": "done_rental",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller now wants a rental or loan car arranged."
+          }
+        },
+        {
+          "id": "done_else",
+          "transition_condition": {
+            "prompt": "The caller has nothing else and is ready to end.",
+            "type": "prompt"
+          },
+          "destination_node_id": "satisfaction"
+        }
+      ],
+      "skippable": false,
+      "type": "conversation",
+      "else_edge": {
+        "destination_node_id": "satisfaction",
+        "id": "booking_done_else",
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        }
+      },
+      "instruction": {
+        "type": "prompt",
+        "text": "Tell the caller the booking is confirmed, give them the reference {{booking_reference}}, and repeat the day and time once. Say a confirmation text will follow."
+      },
+      "id": "booking_done",
+      "name": "Confirm to caller"
+    },
+    {
+      "type": "conversation",
+      "instruction": {
+        "type": "prompt",
+        "text": "Apologise plainly: you could not complete the booking. Do not guess why and do not promise it will work later. Say you will pass this to the service team now."
+      },
+      "id": "booking_failed",
+      "skippable": false,
+      "name": "Booking failed",
+      "always_edge": {
+        "id": "booking_failed_always",
+        "transition_condition": {
+          "prompt": "Always",
+          "type": "prompt"
+        },
+        "destination_node_id": "flag_and_handoff"
+      }
+    },
+    {
+      "type": "conversation",
+      "skippable": false,
+      "edges": [
+        {
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller wants to go ahead and has told you the dates they need the vehicle."
+          },
+          "destination_node_id": "rental_capture",
+          "id": "rental_wants"
+        },
+        {
+          "transition_condition": {
+            "prompt": "The caller does not want a rental after all.",
+            "type": "prompt"
+          },
+          "destination_node_id": "wrap_up",
+          "id": "rental_no"
+        }
+      ],
+      "else_edge": {
+        "id": "rental_intro_else",
+        "destination_node_id": "wrap_up",
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Else"
+        }
+      },
+      "instruction": {
+        "type": "prompt",
+        "text": "Explain briefly whether the dealer offers a loan car, and that a rental needs the driver's licence and a card at collection. A loan car can be arranged. Ask for the dates they need it and what size of vehicle would suit. Do not quote a price or confirm availability."
+      },
+      "id": "rental_intro",
+      "name": "Rental request"
+    },
+    {
+      "name": "Capture rental details",
+      "id": "rental_capture",
+      "type": "conversation",
+      "always_edge": {
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Always"
+        },
+        "id": "rental_capture_always",
+        "destination_node_id": "rental_log"
+      },
+      "skippable": false,
+      "instruction": {
+        "text": "Collect the rental dates, the vehicle size they want, the driver's age, and confirm the licence will be presented at collection. Do not take card details. Repeat the dates back once.",
+        "type": "prompt"
+      }
+    },
+    {
+      "tool_type": "local",
+      "tool_id": "tool_flag_conversation",
+      "wait_for_result": true,
+      "instruction": {
+        "text": "Say you are passing the rental request to the rental desk. When you call this tool, pass reason 'rental_request' and put the dates, the vehicle size and the driver's age in detail, so the rental desk has everything without calling the customer back.",
+        "type": "prompt"
+      },
+      "name": "Log rental request",
+      "skippable": false,
+      "always_edge": {
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Always"
+        },
+        "id": "rental_log_always",
+        "destination_node_id": "rental_done"
+      },
+      "id": "rental_log",
+      "type": "function"
+    },
+    {
+      "instruction": {
+        "text": "Tell the caller the rental desk will confirm the vehicle and the price, and that nothing is confirmed until they do.",
+        "type": "prompt"
+      },
+      "else_edge": {
+        "destination_node_id": "satisfaction",
+        "id": "rental_done_else",
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        }
+      },
+      "skippable": false,
+      "type": "conversation",
+      "edges": [
+        {
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller has nothing else."
+          },
+          "destination_node_id": "satisfaction",
+          "id": "rentaldone_end"
+        }
+      ],
+      "name": "Rental handed over",
+      "id": "rental_done"
+    },
+    {
+      "type": "conversation",
+      "name": "Ask for a rating",
+      "edges": [
+        {
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller raises something further they need help with, or something they want fixed."
+          },
+          "destination_node_id": "fallback_help",
+          "id": "satisfaction_more"
+        }
+      ],
+      "instruction": {
+        "text": "One quick question before you go. Ask the caller to rate the service today, out of five if they want a scale, and whether there is anything they would like to add or pass on to the team. Keep it to one or two sentences, and accept a refusal without pressing \u2014 one ask, then move on.",
+        "type": "prompt"
+      },
+      "else_edge": {
+        "id": "satisfaction_else",
+        "destination_node_id": "feedback_log",
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        }
+      },
+      "id": "satisfaction",
+      "skippable": false
+    },
+    {
+      "tool_type": "local",
+      "tool_id": "tool_record_feedback",
+      "id": "feedback_log",
+      "type": "function",
+      "always_edge": {
+        "transition_condition": {
+          "type": "prompt",
+          "prompt": "Always"
+        },
+        "destination_node_id": "wrap_up",
+        "id": "feedback_log_always"
+      },
+      "name": "Log satisfaction",
+      "instruction": {
+        "type": "prompt",
+        "text": "Say nothing while this runs \u2014 do not read the result out or thank the caller again. When you call this tool, pass the caller's rating as they gave it, and anything they wanted to add as the comment, in their own words. If they declined to rate, pass what they said. Never invent or round a rating."
+      },
+      "skippable": false,
+      "wait_for_result": true
+    },
+    {
+      "always_edge": {
+        "transition_condition": {
+          "prompt": "Always",
+          "type": "prompt"
+        },
+        "id": "billing_intro_always",
+        "destination_node_id": "flag_and_handoff"
+      },
+      "id": "billing_intro",
+      "type": "conversation",
+      "name": "Invoices and warranty",
+      "instruction": {
+        "type": "prompt",
+        "text": "You cannot take payments or change an invoice. If the caller has an outstanding balance, say a balance is showing on the account but do not read an amount from memory \u2014 only if a tool gave you one. If they mention a warranty claim, say the service team must assess it. Apologise once for the trouble, then offer to put them through."
+      },
+      "skippable": false
+    },
+    {
+      "wait_for_result": true,
+      "id": "flag_and_handoff",
+      "name": "Flag for review",
+      "type": "function",
+      "tool_id": "tool_flag_conversation",
+      "tool_type": "local",
+      "instruction": {
+        "type": "prompt",
+        "text": "Say you are passing this to the service team now. When you call this tool, always pass a reason from its list and a one-line detail saying why the call is being passed on."
+      },
+      "always_edge": {
+        "id": "flag_and_handoff_always",
+        "destination_node_id": "handoff",
+        "transition_condition": {
+          "prompt": "Always",
+          "type": "prompt"
+        }
+      },
+      "skippable": false
+    },
+    {
+      "speak_during_execution": true,
+      "transfer_destination": {
+        "type": "predefined",
+        "number": "{{escalation_number}}"
+      },
+      "instruction": {
+        "text": "One moment, I'm putting you through to the service team now.",
+        "type": "static_text"
+      },
+      "transfer_option": {
+        "type": "cold_transfer"
+      },
+      "edge": {
+        "transition_condition": {
+          "prompt": "Transfer failed",
+          "type": "prompt"
+        },
+        "destination_node_id": "escalation_fallback",
+        "id": "handoff_failed"
+      },
+      "skippable": false,
+      "name": "Warm handoff",
+      "id": "handoff",
+      "type": "transfer_call"
+    },
+    {
+      "id": "escalation_fallback",
+      "name": "Transfer failed",
+      "type": "conversation",
+      "instruction": {
+        "text": "The transfer did not go through. Apologise, and take the caller's number and a one-line summary so the team can call them back. Read the number back to confirm it before ending.",
+        "type": "prompt"
+      },
+      "else_edge": {
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        },
+        "destination_node_id": "wrap_up",
+        "id": "escalation_fallback_else"
+      },
+      "skippable": false
+    },
+    {
+      "edges": [
+        {
+          "id": "wrapup_more",
+          "destination_node_id": "fallback_help",
+          "transition_condition": {
+            "type": "prompt",
+            "prompt": "The caller has another question."
+          }
+        }
+      ],
+      "instruction": {
+        "type": "prompt",
+        "text": "If you have already asked whether there is anything else \u2014 for example because you just asked them to rate the service \u2014 do not ask again; just say goodbye. Otherwise, ask if there is anything else you can help with first. Either way, mention the dealership name once."
+      },
+      "id": "wrap_up",
+      "type": "conversation",
+      "else_edge": {
+        "destination_node_id": "end_call",
+        "transition_condition": {
+          "prompt": "Else",
+          "type": "prompt"
+        },
+        "id": "wrap_up_else"
+      },
+      "skippable": false,
+      "name": "Wrap up"
+    },
+    {
+      "type": "end",
+      "name": "End call",
+      "skippable": false,
+      "id": "end_call",
+      "speak_during_execution": true,
+      "instruction": {
+        "type": "static_text",
+        "text": "Thanks for calling {{dealer_name}}. Goodbye."
+      }
+    }
+  ],
+  "components": [
+    {
+      "name": "Subflow L1",
+      "user_modified_timestamp": 1790097270566,
+      "start_node_id": "conversation-1790097270566",
+      "tools": [],
+      "conversation_flow_component_id": "cf-component-1790097270566",
+      "nodes": [
+        {
+          "id": "conversation-1790097270566",
+          "name": "Conversation",
+          "skippable": false,
+          "display_position": {
+            "x": 200,
+            "y": 100
+          },
+          "edges": [],
+          "type": "conversation",
+          "instruction": {
+            "type": "prompt",
+            "text": "Describe what the AI should say or do"
+          }
+        },
+        {
+          "type": "end",
+          "skippable": false,
+          "id": "component-end-1790097270566",
+          "name": "Exit Subflow",
+          "instruction": {
+            "text": "Subflow completed",
+            "type": "static_text"
+          },
+          "display_position": {
+            "x": 600,
+            "y": 100
+          }
+        }
+      ]
+    }
+  ],
+  "start_node_id": "consent_gate",
+  "start_speaker": "agent",
+  "tools": [
+    {
+      "max_retry": 0,
+      "speak_during_execution": false,
+      "parameters": {
+        "properties": {
+          "value": {
+            "description": "The plate exactly as the caller said or spelled it. Do not tidy, reorder, complete or correct it \u2014 the server does the interpreting. Pass the spoken words, for example: 'AB12CDE'; 'A B one two C D E'; 'Alpha Bravo twelve Charlie Delta Echo'; 'a for alpha, b for bravo, one, two, c for charlie, d for delta, e for echo'; 'AB12CDE, I think'. If they spell it letter by letter, keep the letters as they said them. If they sound unsure, pass what you heard anyway \u2014 the readback step is what confirms it.",
+            "type": "string"
+          },
+          "country": {
+            "description": "The dealer's ISO country code.",
+            "type": "string",
+            "const": "{{country}}"
+          },
+          "kind": {
+            "type": "string",
+            "const": "license_plate",
+            "description": "Always a registration plate in this flow."
+          }
+        },
+        "type": "object",
+        "required": [
+          "value"
+        ]
+      },
+      "url": "https://retell-dms.helix-leads.com/tools/validate_identifier",
+      "type": "custom",
+      "args_at_root": true,
+      "name": "validate_identifier",
+      "response_variables": {
+        "identifier_valid": "data.valid",
+        "identifier_readback": "data.readback",
+        "identifier_confidence": "data.confidence",
+        "identifier_uncertain_positions": "data.uncertain_positions",
+        "identifier_reason": "data.reason",
+        "identifier_suggestions": "data.suggestions",
+        "identifier_coercions": "data.coercions",
+        "identifier_normalised": "data.normalised"
+      },
+      "method": "POST",
+      "timeout_ms": 12000,
+      "description": "Deterministically validate a registration plate the caller spelled out. ALWAYS call this immediately after capturing the plate and BEFORE reading it back or acting on it. Pass the caller's words verbatim; do not correct, tidy or reformat them yourself. If valid is false and readback is present, read the readback to the caller and ask them to confirm or correct it. Never invent a plate.",
+      "tool_id": "tool_validate_identifier",
+      "speak_after_execution": false
+    },
+    {
+      "url": "https://retell-dms.helix-leads.com/tools/lookup_vehicle",
+      "name": "lookup_vehicle",
+      "method": "POST",
+      "description": "Look up vehicles in the dealer's DMS by registration plate. Call this AFTER the caller has confirmed the plate. Returns vehicle details so the conversation can be personalised. If match_count is greater than 1 you MUST ask the caller which vehicle they mean using the returned summaries \u2014 never choose one yourself.",
+      "speak_during_execution": false,
+      "args_at_root": true,
+      "response_variables": {
+        "vehicle_mileage": "data.mileage",
+        "vehicle_id": "data.vehicle_id",
+        "vehicle_found": "data.found",
+        "vehicle_match_count": "data.match_count",
+        "vehicle_summary": "data.summary",
+        "vehicle_warranty_active": "data.warranty_active",
+        "vehicle_options": "data.options",
+        "customer_id": "data.customer_id",
+        "customer_known": "data.customer_known",
+        "vehicle_lookup_message": "data.message",
+        "vehicle_ambiguous": "data.ambiguous",
+        "customer_outstanding_balance": "data.outstanding_balance",
+        "customer_first_name": "data.customer_first_name"
+      },
+      "tool_id": "tool_lookup_vehicle",
+      "type": "custom",
+      "speak_after_execution": false,
+      "timeout_ms": 12000,
+      "max_retry": 0,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "plate": {
+            "description": "The plate the caller confirmed.",
+            "type": "string",
+            "const": "{{identifier_normalised}}"
+          },
+          "dealer_id": {
+            "description": "The dealer id for this call.",
+            "type": "string",
+            "const": "{{dealer_id}}"
+          }
+        }
+      }
+    },
+    {
+      "type": "custom",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "dealer_id": {
+            "const": "{{dealer_id}}",
+            "description": "The dealer id.",
+            "type": "string"
+          },
+          "service_type": {
+            "description": "The service being booked, e.g. annual_service, mot.",
+            "type": "string"
+          },
+          "date_to": {
+            "type": "string",
+            "description": "ISO end date, YYYY-MM-DD."
+          },
+          "date_from": {
+            "type": "string",
+            "description": "ISO start date, YYYY-MM-DD."
+          }
+        },
+        "required": [
+          "service_type",
+          "date_from",
+          "date_to"
+        ]
+      },
+      "url": "https://retell-dms.helix-leads.com/tools/check_availability",
+      "args_at_root": true,
+      "timeout_ms": 12000,
+      "name": "check_availability",
+      "speak_during_execution": true,
+      "description": "Check real appointment slots in the dealer's DMS for a date range. Use the ISO dates the caller asked for. Only ever offer slots returned by this tool \u2014 never invent or estimate a time.",
+      "max_retry": 0,
+      "response_variables": {
+        "slots_available": "data.count",
+        "slots_message": "data.message",
+        "slots": "data.slots"
+      },
+      "tool_id": "tool_check_availability",
+      "speak_after_execution": false,
+      "method": "POST"
+    },
+    {
+      "response_variables": {
+        "booking_confirmed": "data.confirmed",
+        "appointment_id": "data.appointment_id",
+        "booking_pending": "data.pending",
+        "booking_message": "data.message",
+        "booking_start": "data.start",
+        "booking_reference": "data.reference"
+      },
+      "speak_after_execution": false,
+      "url": "https://retell-dms.helix-leads.com/tools/create_appointment",
+      "speak_during_execution": true,
+      "name": "create_appointment",
+      "description": "Commit a service appointment to the dealer's DMS. This is an IRREVERSIBLE action: only call it after you have read the vehicle, service and chosen time back to the caller and they have clearly confirmed. The endpoint is idempotent, so a retry cannot double-book. Never call it speculatively to 'check' something.",
+      "method": "POST",
+      "timeout_ms": 12000,
+      "parameters": {
+        "type": "object",
+        "required": [
+          "service_type",
+          "start",
+          "transport_option"
+        ],
+        "properties": {
+          "start": {
+            "type": "string",
+            "description": "ISO date-time of the slot, YYYY-MM-DDTHH:MM."
+          },
+          "vehicle_id": {
+            "const": "{{vehicle_id}}",
+            "type": "string",
+            "description": "The DMS vehicle id."
+          },
+          "customer_id": {
+            "type": "string",
+            "description": "The DMS customer id.",
+            "const": "{{customer_id}}"
+          },
+          "transport_option": {
+            "description": "How the customer gets moving while the car is in.",
+            "enum": [
+              "wait_on_site",
+              "loan_car",
+              "collection_and_delivery",
+              "none"
+            ],
+            "type": "string"
+          },
+          "dealer_id": {
+            "description": "The dealer id.",
+            "type": "string",
+            "const": "{{dealer_id}}"
+          },
+          "notes": {
+            "type": "string",
+            "description": "What the customer reported."
+          },
+          "service_type": {
+            "type": "string",
+            "description": "The service being booked."
+          }
+        }
+      },
+      "type": "custom",
+      "args_at_root": true,
+      "tool_id": "tool_create_appointment",
+      "max_retry": 2
+    },
+    {
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "appointment_id": {
+            "const": "{{appointment_id}}",
+            "description": "Id returned when booking.",
+            "type": "string"
+          },
+          "dealer_id": {
+            "description": "The dealer id.",
+            "const": "{{dealer_id}}",
+            "type": "string"
+          }
+        }
+      },
+      "response_variables": {
+        "write_verified": "data.verified",
+        "stored_summary": "data.stored_summary",
+        "verify_message": "data.message"
+      },
+      "tool_id": "tool_verify_appointment",
+      "timeout_ms": 12000,
+      "type": "custom",
+      "method": "POST",
+      "max_retry": 0,
+      "speak_during_execution": false,
+      "url": "https://retell-dms.helix-leads.com/tools/verify_appointment",
+      "speak_after_execution": false,
+      "description": "Read an appointment back out of the DMS to confirm it was stored correctly. Always call this immediately after create_appointment, before telling the caller the booking is done. If write_verified is not true, apologise and transfer to a human.",
+      "name": "verify_appointment",
+      "args_at_root": true
+    },
+    {
+      "timeout_ms": 12000,
+      "speak_during_execution": false,
+      "parameters": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "description": "What happened, in one or two sentences \u2014 enough for a colleague to pick the call up without replaying it."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Short reason code for the review, from this list where one fits: rental_request, booking_failed, billing_query, warranty_claim, wants_human, frustrated, unresolved, consent_declined, transfer_failed. Use the closest match."
+          },
+          "severity": {
+            "description": "How urgent the review is. Defaults to medium if omitted.",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "tool_id": "tool_flag_conversation",
+      "speak_after_execution": false,
+      "method": "POST",
+      "type": "custom",
+      "max_retry": 0,
+      "args_at_root": true,
+      "name": "flag_conversation",
+      "url": "https://retell-dms.helix-leads.com/tools/flag_conversation",
+      "response_variables": {
+        "flag_recorded": "data.recorded",
+        "flag_message": "data.message"
+      },
+      "description": "Record that this call needs human review. Use it whenever the caller sounds frustrated, repeats a request, disputes an invoice, or you could not resolve their issue. This is how the tail of unhappy customers surfaces instead of hiding behind a green dashboard."
+    },
+    {
+      "type": "custom",
+      "timeout_ms": 12000,
+      "name": "record_feedback",
+      "method": "POST",
+      "description": "Record the caller's satisfaction at the end of a successful call. Call this once, after asking the caller how the service was. Capture their rating and anything they wanted to add, and do not ask again or argue with the answer.",
+      "url": "https://retell-dms.helix-leads.com/tools/record_feedback",
+      "max_retry": 0,
+      "parameters": {
+        "properties": {
+          "comment": {
+            "type": "string",
+            "description": "Anything the caller wanted to add, in their own words, kept verbatim \u2014 a compliment, a complaint, or a suggestion. Empty string if they had nothing to add. Do not tidy or summarise it."
+          },
+          "rating": {
+            "type": "string",
+            "description": "The rating the caller gave, as they said it \u2014 a number or word from one to five, e.g. '5', 'four', 'four out of five'. If they declined to rate, pass what they said instead, e.g. 'no thanks'. Pass an empty string if they gave no clear answer. Never invent or round a rating."
+          }
+        },
+        "type": "object"
+      },
+      "speak_during_execution": false,
+      "response_variables": {
+        "feedback_recorded": "data.recorded",
+        "feedback_message": "data.message"
+      },
+      "speak_after_execution": false,
+      "args_at_root": true,
+      "tool_id": "tool_record_feedback"
+    }
+  ],
+  "model_choice": {
+    "type": "cascading",
+    "model": "gpt-4.1"
+  },
+  "model_temperature": 0.2,
+  "default_dynamic_variables": {
+    "system_timezone": "Europe/London",
+    "currency": "GBP",
+    "language": "en-GB",
+    "requires_recording_consent": "true",
+    "max_identifier_attempts": "3",
+    "offers_loan_car": "true",
+    "dealer_can_book": "true",
+    "dealer_async_writes": "false",
+    "escalation_number": "+441134960000",
+    "timezone": "Europe/London",
+    "identifier_confidence": "low",
+    "dms_vendor": "keyloop",
+    "opening_hours": "monday 08:30\u201318:00; tuesday 08:30\u201318:00; wednesday 08:30\u201318:00; thursday 08:30\u201318:00; friday 08:30\u201318:00; saturday 09:00\u201313:00; sunday closed",
+    "tone": "warm, concise, British English",
+    "dealer_id": "northgate-uk",
+    "services_list": "annual_service, mot, diagnostic, brakes, tyres, aircon",
+    "dealer_can_check_availability": "true",
+    "vehicle_ambiguous": "false",
+    "booking_pending": "false",
+    "write_verified": "false",
+    "dealer_name": "Northgate Motors",
+    "slots_available": "0",
+    "dealer_can_cancel": "true",
+    "identifier_valid": "false",
+    "booking_confirmed": "false",
+    "country": "GB",
+    "dealer_phone": "+441134960100",
+    "vehicle_found": "false"
+  },
+  "kb_config": {
+    "top_k": 3,
+    "filter_score": 0.6
+  },
+  "begin_tag_display_position": {
+    "y": 15.273430960518972,
+    "x": 6
+  },
+  "is_published": false
+}

@@ -1,0 +1,25 @@
+{
+  "_comment": "Copy to pricing.json and replace with your account's real rates. Retell's own call_cost.product_costs returns the unit prices you are actually charged per product — read them off the diagram's cost panel once you have traffic, and put them here. Without this file the tool uses placeholder prices and says so.",
+  "source": "pricing.json",
+  "currency": "USD",
+
+  "call_type": "phone",
+
+  "platform_per_minute": 0.07,
+  "tts_per_minute": 0.04,
+  "telephony_per_minute": 0.01,
+  "llm_input_per_1k_tokens": 0.002,
+  "llm_output_per_1k_tokens": 0.008,
+
+  "assumptions": {
+    "_comment": "Duration is the dominant assumption in the whole model. Widen it and the estimate range widens with it. seconds_per_turn drives both the quadratic LLM token growth and the turn count.",
+    "duration_minutes": { "low": 1.5, "mid": 3.0, "high": 5.0 },
+    "seconds_per_turn": 18,
+    "output_tokens_per_turn": 40,
+    "transcript_tokens_per_turn": 45,
+    "conversations_per_day": 100,
+    "days_per_month": 30,
+    "_volume_ladder_comment": "The volume table in the Business view. Any list of integers; the configured conversations_per_day is always shown too.",
+    "volume_ladder": [25, 50, 100, 250, 500]
+  }
+}

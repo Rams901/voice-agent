@@ -1,0 +1,1374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Frontdesk — flow diagram</title>
+
+<!--
+  Zero-build React.
+
+  There is no package.json, no bundler and no build step: the app is CDN ESM plus
+  in-browser JSX. That is a deliberate trade. This tool gets opened during a
+  demo, on someone else's laptop, possibly minutes before a call — `npm install`
+  is a liability there. The cost is that it needs a network connection for the
+  CDN on first load (the *data* is cached locally by the server; these libraries
+  are not).
+
+  The import map exists for one reason: React Flow and React must share a single
+  React instance or hooks throw. Pinning both to the same URL, and marking
+  reactflow as `?external=react`, is what guarantees that.
+-->
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react-dom": "https://esm.sh/react-dom@18.3.1",
+    "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+    "reactflow": "https://esm.sh/reactflow@11.11.4?external=react,react-dom"
+  }
+}
+</script>
+<link rel="stylesheet" href="https://unpkg.com/reactflow@11.11.4/dist/style.css" />
+
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #ffffff;
+    --line: #e2e8f0;
+    --muted: #64748b;
+    --text: #0f172a;
+    --llm: #3b82f6;
+    --det: #059669;
+    --branch: #d97706;
+    --transfer: #7c3aed;
+    --end: #64748b;
+  }
+  * { box-sizing: border-box; }
+  html, body, #root { height: 100%; margin: 0; }
+  body {
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background: #f1f5f9;
+  }
+  .app { display: grid; grid-template-columns: 1fr 430px; height: 100%; }
+  .canvas { position: relative; background: #f8fafc; }
+
+  .toolbar {
+    position: absolute; z-index: 5; top: 12px; left: 12px; right: 12px;
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,.94); backdrop-filter: blur(6px);
+    border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
+    box-shadow: 0 1px 3px rgba(15,23,42,.07);
+  }
+  .toolbar .title { font-weight: 650; font-size: 13px; }
+  .toolbar .sub { color: var(--muted); font-size: 12px; }
+  .spacer { flex: 1; }
+
+  button, .tab {
+    font: inherit; font-size: 12px; cursor: pointer;
+    background: #fff; color: var(--text);
+    border: 1px solid var(--line); border-radius: 7px; padding: 5px 10px;
+  }
+  button:hover:not(:disabled) { border-color: #94a3b8; background: #f8fafc; }
+  button:disabled, .tab[aria-disabled="true"] { opacity: .45; cursor: default; }
+  .tabs { display: flex; gap: 4px; background: #f1f5f9; border-radius: 8px; padding: 3px; }
+  .tab { border: 1px solid transparent; background: transparent; }
+  .tab[aria-selected="true"] {
+    background: #fff; border-color: var(--line); font-weight: 600;
+  }
+
+  .side { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; }
+  .side section { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .side h2 {
+    margin: 0 0 9px; font-size: 11px; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--muted); font-weight: 650;
+  }
+
+  .kv { display: grid; grid-template-columns: 116px 1fr; gap: 3px 10px; font-size: 12px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; overflow-wrap: anywhere; }
+
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat { background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .stat .n { font-size: 19px; font-weight: 680; letter-spacing: -.02em; }
+  .stat .l { color: var(--muted); font-size: 11px; }
+
+  .legend { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
+  .legend-row { display: flex; align-items: center; gap: 8px; }
+  .swatch { width: 26px; height: 0; border-top-width: 2px; border-top-style: solid; flex: none; }
+  .order { margin: 0; padding-left: 20px; font-size: 12px; }
+  .order li { margin-bottom: 5px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 1px 8px; font-size: 11px; background: #f8fafc;
+  }
+  .badge { border-radius: 999px; padding: 1px 7px; font-size: 10px; font-weight: 700; letter-spacing: .03em; }
+  .badge.modelled { background: #fef3c7; color: #92400e; }
+  .badge.observed { background: #d1fae5; color: #065f46; }
+  .warn { color: #b45309; }
+  .muted { color: var(--muted); }
+  .note { color: var(--muted); font-size: 11.5px; margin-top: 7px; }
+
+  .money-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .money-row b { font-variant-numeric: tabular-nums; }
+  .dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 6px; vertical-align: baseline;
+  }
+  .bar { display: flex; height: 7px; border-radius: 4px; overflow: hidden; margin: 8px 0 6px; }
+  .bar span { display: block; }
+
+  .tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .tbl th {
+    text-align: right; font-weight: 600; color: var(--muted); font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: .05em; padding: 0 0 5px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tbl th:first-child, .tbl td:first-child { text-align: left; }
+  .tbl td {
+    text-align: right; padding: 4px 0; font-variant-numeric: tabular-nums;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  /* The configured volume, so the table reads as an answer and not a spreadsheet. */
+  .tbl tr.on { font-weight: 680; background: #f8fafc; }
+  .tbl tr.on td:first-child::after { content: ' ●'; color: #2563eb; font-size: 9px; }
+
+  .flow-node {
+    width: 236px; border: 1.5px solid var(--line); border-radius: 9px;
+    background: #fff; padding: 8px 10px; font-size: 12px;
+    box-shadow: 0 1px 2px rgba(15,23,42,.06);
+  }
+  .flow-node.selected { box-shadow: 0 0 0 2.5px #0f172a; }
+  .flow-node .kind {
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em;
+    font-weight: 700; color: var(--muted);
+  }
+  .flow-node .name { font-weight: 600; margin: 2px 0 5px; }
+  .flow-node .foot { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .flow-node .tag {
+    font-size: 10px; background: #f1f5f9; border-radius: 5px; padding: 1px 5px;
+    color: #334155;
+  }
+  .flow-node .stage { background: #e0e7ff; color: #3730a3; }
+  .flow-node .shared { background: #fce7f3; color: #9d174d; }
+  .flow-node.cluster { width: 296px; padding: 11px 13px; border-width: 2px; }
+  .flow-node.cluster .name { font-size: 14px; margin-bottom: 4px; }
+  .flow-node.cluster .sub { font-size: 11px; color: var(--muted); margin-bottom: 7px; }
+  .flow-node.cluster .foot { margin-top: 6px; }
+  .react-flow__edge-text { font-size: 9.5px; }
+  .react-flow__edge-textbg { fill: #ffffff; fill-opacity: .88; }
+
+  .err {
+    margin: 40px auto; max-width: 620px; background: #fff; border: 1px solid #fecaca;
+    border-left: 4px solid #ef4444; border-radius: 8px; padding: 16px 18px;
+  }
+  .err pre { white-space: pre-wrap; font-size: 12px; color: #7f1d1d; }
+  .loading { padding: 40px; color: var(--muted); }
+  .instr {
+    margin: 8px 0 0; padding: 9px 10px; background: #f8fafc; border: 1px solid var(--line);
+    border-radius: 7px; font-size: 12px; max-height: 190px; overflow: auto; white-space: pre-wrap;
+  }
+
+  /* ---------------------------------------------------------------- client --
+
+     The client tab is a *document*, not an inspector. No canvas, no sidebar,
+     no zoom controls — one readable column. That is a deliberate asymmetry:
+     the other two audiences are diagnosing a system, this one is deciding
+     whether to trust it, and a graph is the wrong artefact for that question.
+  --------------------------------------------------------------------------- */
+  .doc { height: 100%; overflow-y: auto; background: #f1f5f9; }
+  .doc-inner { max-width: 800px; margin: 0 auto; padding: 30px 30px 80px; }
+  .doc-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding-bottom: 16px; margin-bottom: 22px; border-bottom: 1px solid var(--line);
+  }
+  .doc h1 { font-size: 25px; margin: 0 0 7px; letter-spacing: -.02em; line-height: 1.25; }
+  .doc .lede { color: #475569; font-size: 13.5px; margin: 0 0 14px; max-width: 66ch; }
+  .doc h2 {
+    font-size: 11px; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--muted); font-weight: 650; margin: 34px 0 13px;
+  }
+  .verified {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px;
+    background: #d1fae5; color: #065f46; border-radius: 999px; padding: 3px 11px;
+    font-weight: 600;
+  }
+  .verified.bad { background: #fee2e2; color: #991b1b; }
+
+  .step { position: relative; padding: 0 0 20px 46px; }
+  .step::before {
+    content: ''; position: absolute; left: 14px; top: 33px; bottom: 0;
+    width: 2px; background: #dbe3ec;
+  }
+  .step:last-child::before { display: none; }
+  .step .num {
+    position: absolute; left: 0; top: 0; width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; background: #0f172a; color: #fff;
+    font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  .step .card {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 13px 15px 14px;
+  }
+  .step.stale .card { border-color: #fca5a5; background: #fff7f7; }
+  .step h3 { margin: 0 0 7px; font-size: 14.5px; letter-spacing: -.01em; }
+  .step p { margin: 0; font-size: 13px; line-height: 1.62; color: #1e293b; }
+  .hear {
+    margin: 11px 0 0; padding: 8px 12px; border-left: 3px solid #94a3b8;
+    background: #f8fafc; font-style: italic; color: #334155; font-size: 12.5px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+
+  .guarantee { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+  .guarantee:last-child { border-bottom: none; }
+  .guarantee .tick { color: #059669; font-weight: 700; flex: none; }
+  .guarantee.stale .tick { color: #dc2626; }
+  .guarantee span { font-size: 13px; line-height: 1.55; }
+  .guarantee .why { color: var(--muted); font-size: 11.5px; }
+</style>
+</head>
+<body>
+<div id="root"><div class="loading">Loading flow snapshot…</div></div>
+
+<script>
+  // The UI is built in the browser, so a syntax error or a CDN failure would
+  // otherwise leave the user staring at "Loading…" with no explanation. Fail
+  // loud, and survive React clearing the container before it throws.
+  window.addEventListener('error', function (e) {
+    var msg = (e && (e.message || (e.error && e.error.message))) || 'unknown error';
+    document.title = 'ERROR: ' + msg;
+    var el = document.getElementById('root');
+    if (el && !el.querySelector('.app') && !el.querySelector('.err')) {
+      el.innerHTML = '<div class="err"><h2>Could not start the diagram UI</h2><pre>'
+        + msg + '</pre>'
+        + '<p class="muted">This page loads React and React Flow from a CDN, and '
+        + 'compiles its own JSX in the browser. Check the network connection and '
+        + 'reload — the server side and the cached snapshot are unaffected.</p></div>';
+    }
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    document.title = 'REJECT: ' + ((e.reason && e.reason.message) || e.reason);
+  });
+</script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+<script type="text/babel" data-type="module" data-presets="react">
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import ReactFlow, {
+  Background, Controls, Handle, MarkerType, MiniMap, Position,
+} from 'reactflow';
+
+/* ------------------------------------------------------------------ view model
+   Nothing about the flow is hard-coded here. Positions, node kinds, edge kinds,
+   skills, annotations, cost and latency all arrive from the server's snapshot.
+   The only knowledge in this file is presentation: which colour a deterministic
+   edge is, and what a node card looks like.
+------------------------------------------------------------------------------ */
+
+const KIND = {
+  conversation:  { border: '#3b82f6', bg: '#eff6ff', label: 'LLM' },
+  function:      { border: '#059669', bg: '#ecfdf5', label: 'Code · runs' },
+  branch:        { border: '#d97706', bg: '#fffbeb', label: 'Code · decides' },
+  transfer_call: { border: '#7c3aed', bg: '#f5f3ff', label: 'Transfer' },
+  end:           { border: '#64748b', bg: '#f8fafc', label: 'End' },
+  cluster:       { border: '#0f172a', bg: '#ffffff', label: 'Skill' },
+  unknown:       { border: '#94a3b8', bg: '#f8fafc', label: 'Unknown' },
+};
+const kindStyle = (k) => KIND[k] || KIND.unknown;
+
+// Edge semantics are the whole point of the technical view: a solid blue
+// transition was decided by code, a dashed grey one by the model.
+const EDGE = {
+  deterministic: { stroke: '#2563eb', dash: null,    label: 'Code decision (equation)' },
+  always:        { stroke: '#10b981', dash: null,    label: 'Always runs' },
+  llm:           { stroke: '#94a3b8', dash: '5 4',   label: 'Model judgement (prompt)' },
+  else:          { stroke: '#f59e0b', dash: '2 3',   label: 'Fallback (never stuck)' },
+  failure:       { stroke: '#ef4444', dash: '5 4',   label: 'On failure' },
+  mixed:         { stroke: '#7c3aed', dash: '6 4',   label: 'Mixed (aggregated)' },
+};
+const edgeStyle = (k) => EDGE[k] || EDGE.llm;
+
+const money = (n) => (n == null ? '—' : '$' + Number(n).toFixed(4));
+const money2 = (n) => (n == null ? '—' : '$' + Number(n).toFixed(2));
+// Unit prices need the extra digits; per-conversation totals read better without.
+const usd = (n, dp = 4) => (n == null ? '—' : '$' + Number(n).toFixed(dp));
+const pct = (n) => (n == null ? '—' : Math.round(n * 100) + '%');
+
+/* ---------------------------------------------------------------- node card */
+
+function FlowNode({ data, selected }) {
+  const style = kindStyle(data.kind);
+  return (
+    <div
+      className={'flow-node' + (selected ? ' selected' : '')}
+      style={{ borderColor: style.border, background: style.bg }}
+    >
+      <Handle type="target" position={Position.Left} />
+      <div className="kind">{style.label}</div>
+      <div className="name">{data.label}</div>
+      <div className="foot">
+        {data.prompt_tokens > 0 && <span className="tag">{data.prompt_tokens}t prompt</span>}
+        {data.tool_name && <span className="tag">🔧 {data.tool_name}</span>}
+        {data.guardrail_stage && <span className="tag stage">{data.guardrail_stage}</span>}
+        {data.is_shared && <span className="tag shared">shared</span>}
+      </div>
+      <Handle type="source" position={Position.Right} />
+    </div>
+  );
+}
+
+/* A cluster card: one skill, summarised.
+
+   This is what makes the default view legible. The full graph needs ~3300px of
+   width for its 14-step spine, so fitting it to a normal window lands at ~0.35
+   zoom and the text becomes unreadable — the same problem the Retell canvas has.
+   Seven cards fit at 100%.
+
+   The chip cap is not cosmetic. Card height has to be *predictable* for the
+   layout to space rows correctly, and Booking alone carries six tools and four
+   guardrail stages — ten chips, which wrapped to three rows and made the card
+   taller than the gap above it. Bounding the chips bounds the height, and the
+   full list is one click away in the sidebar. */
+const MAX_CHIPS = 5;
+
+function ClusterNode({ data, selected }) {
+  const style = kindStyle(data.kind);
+  // Built as one string rather than JSX text nodes, so "19 steps" cannot render
+  // as "19 step" + "s" and get read out with a gap in the middle.
+  const steps = data.node_count + (data.node_count === 1 ? ' step' : ' steps');
+  const line = steps + ' · ' + data.code_nodes + ' code, ' + data.model_nodes + ' model'
+    + (data.prompt_tokens > 0 ? ' · ' + data.prompt_tokens + 't prompts' : '');
+
+  const chips = [
+    ...data.stages.map((s) => ({ key: 'stage:' + s, cls: 'tag stage', text: s })),
+    ...data.tools.map((t) => ({ key: 'tool:' + t, cls: 'tag', text: '🔧 ' + t })),
+  ];
+  const shown = chips.slice(0, MAX_CHIPS);
+  const hidden = chips.length - shown.length;
+
+  return (
+    <div
+      className={'flow-node cluster' + (selected ? ' selected' : '')}
+      style={{ borderColor: data.is_shared ? '#9d174d' : style.border }}
+    >
+      <Handle type="target" position={Position.Left} />
+      <div className="kind">Skill</div>
+      <div className="name">{data.label}</div>
+      <div className="sub">{line}</div>
+      <div className="foot">
+        {shown.map((chip) => (
+          <span className={chip.cls} key={chip.key}>{chip.text}</span>
+        ))}
+        {hidden > 0 && (
+          <span className="tag" title={chips.slice(MAX_CHIPS).map((c) => c.text).join(', ')}>
+            +{hidden} more
+          </span>
+        )}
+        {data.is_shared && <span className="tag shared">shared exits</span>}
+      </div>
+      <Handle type="source" position={Position.Right} />
+    </div>
+  );
+}
+
+const nodeTypes = { flow: FlowNode, cluster: ClusterNode };
+
+/* -------------------------------------------------------------------- panels */
+
+function Legend({ metrics }) {
+  return (
+    <section>
+      <h2>Legend — what the shapes mean</h2>
+      <div className="legend">
+        <div className="legend-row">
+          <span className="swatch" style={{ borderTopColor: '#3b82f6' }} />
+          <span>Conversation node — the model decides words</span>
+        </div>
+        <div className="legend-row">
+          <span className="swatch" style={{ borderTopColor: '#059669' }} />
+          <span>Function node — code, always runs on entry</span>
+        </div>
+        <div className="legend-row">
+          <span className="swatch" style={{ borderTopColor: '#d97706' }} />
+          <span>Branch node — code, deterministic</span>
+        </div>
+      </div>
+      <h2 style={{ marginTop: 14 }}>Transitions</h2>
+      <div className="legend">
+        {Object.entries(EDGE).map(([key, meta]) => (
+          <div className="legend-row" key={key}>
+            <span className="swatch" style={{
+              borderTopColor: meta.stroke,
+              borderTopStyle: meta.dash ? 'dashed' : 'solid',
+            }} />
+            <span>{meta.label}</span>
+          </div>
+        ))}
+      </div>
+      {/* Retell's documented evaluation order. This is the most useful thing on
+          the page and Retell's own canvas does not state it: it explains why the
+          equation edges are trustworthy and the prompt edges are a probability,
+          and it is the reason "use an equation wherever you can" is advice
+          rather than taste. */}
+      <h2 style={{ marginTop: 14 }}>Order Retell evaluates them</h2>
+      <ol className="order">
+        <li><b>Always</b> — fires immediately. Nothing else is even checked.</li>
+        <li><b>Equations</b> — all of them, top to bottom, first true wins.
+          No LLM involved, so this is where certainty lives.</li>
+        <li><b>Prompts</b> — only if no equation matched. The model evaluates
+          every prompt edge <i>together</i> and picks one, or none. There is no
+          priority between them.</li>
+        <li><b>Else</b> — the fallback, so a node cannot get stuck.</li>
+        <li><b>Stay</b> — otherwise the node continues the conversation.</li>
+      </ol>
+      <p className="note">
+        {pct(metrics.deterministic_edge_share)} of transitions are decided by
+        code. The rest are language judgement, which is why they need guardrails
+        around them rather than trust in the prompt.
+      </p>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------- cost panels --
+
+   One panel, three audiences, so the pieces are separate components rather than
+   one component with an `audience` prop and conditionals inside. Technical and
+   Business show the same numbers in a different order and at a different level
+   of detail; the *ordering* is the editorial decision, so it lives in the
+   sidebar composition below rather than in here.
+------------------------------------------------------------------------------ */
+
+/* One conversation, the headline. The badge is not decoration: MODELLED vs
+   OBSERVED is the difference between an estimate and a record, and it is the
+   thing a business audience must not have to infer. */
+function CostHeadline({ cost }) {
+  const modelled = cost.modelled;
+  const perConv = modelled.per_conversation;
+  const bands = cost.assumptions.duration_minutes;
+  const isModelledOnly = cost.source === 'modelled';
+
+  return (
+    <section>
+      <h2>Cost of one conversation</h2>
+      <div style={{ marginBottom: 8 }}>
+        <span className={'badge ' + (isModelledOnly ? 'modelled' : 'observed')}>
+          {isModelledOnly ? 'MODELLED' : 'OBSERVED + MODELLED'}
+        </span>{' '}
+        <span className="muted">{cost.currency}</span>
+      </div>
+
+      <div className="stats">
+        <div className="stat">
+          <div className="n">{money(perConv.mid)}</div>
+          <div className="l">mid — a {bands.mid} min call</div>
+        </div>
+        <div className="stat">
+          <div className="n">{money2(modelled.per_day.mid)}</div>
+          <div className="l">per day @ {modelled.conversations_per_day}/day</div>
+        </div>
+        <div className="stat">
+          <div className="n">{money2(modelled.per_month.mid)}</div>
+          <div className="l">per month ({modelled.days_per_month} days)</div>
+        </div>
+        <div className="stat">
+          <div className="n">{money(perConv.low)}–{money(perConv.high)}</div>
+          <div className="l">{bands.low}–{bands.high} min range</div>
+        </div>
+      </div>
+
+      {cost.pricing_is_placeholder && (
+        <p className="note warn">
+          <b>These unit prices are placeholders.</b> The shape of the number is
+          right; the magnitude is a guess. Copy <code>pricing.json.example</code>{' '}
+          to <code>pricing.json</code> with your account's real rates — or read
+          them off the observed block below once calls connect — and this becomes
+          a figure you can quote rather than one you have to caveat.
+        </p>
+      )}
+    </section>
+  );
+}
+
+/* The volume ladder.
+
+   The model is linear in volume, so this is arithmetic rather than a second
+   guess — and it pre-empts the first follow-up, which is always "and at double
+   that?". Flagging where the configured volume sits is what makes it read as an
+   answer instead of a table. */
+function VolumeTable({ cost }) {
+  const rows = cost.modelled.volume_sensitivity || [];
+  if (rows.length === 0) return null;
+  const configured = cost.modelled.conversations_per_day;
+
+  return (
+    <section>
+      <h2>At volume</h2>
+      <table className="tbl">
+        <thead>
+          <tr><th>calls / day</th><th>per day</th><th>per month</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.conversations_per_day}
+                className={row.conversations_per_day === configured ? 'on' : ''}>
+              <td>{row.conversations_per_day.toLocaleString()}</td>
+              <td>{money2(row.per_day)}</td>
+              <td>{money2(row.per_month)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="note">
+        Mid duration throughout. Straight multiplication — there is no volume
+        discount in this model, and your Retell plan may well have one.
+      </p>
+    </section>
+  );
+}
+
+/* The breakdown matters more than the total: it is what lets somebody argue
+   with the number instead of accepting or rejecting it wholesale. */
+function CostComposition({ cost }) {
+  const comp = cost.modelled.components.mid;
+  const drivers = cost.modelled.drivers || {};
+  const voice = comp.voice_and_platform;
+  const llm = comp.llm_tokens;
+  const total = Math.max(voice + llm, 0.0001);
+
+  return (
+    <section>
+      <h2>Where the money goes</h2>
+      <div className="bar">
+        <span style={{ width: (voice / total) * 100 + '%', background: '#0ea5e9' }} />
+        <span style={{ width: (llm / total) * 100 + '%', background: '#8b5cf6' }} />
+      </div>
+      <div className="money-row">
+        <span><i className="dot" style={{ background: '#0ea5e9' }} />
+          Voice + platform + telephony{' '}
+          <span className="muted">({cost.assumptions.duration_minutes.mid} min)</span>
+        </span>
+        <b>{money(voice)} · {pct(drivers.voice_and_platform_share)}</b>
+      </div>
+      <div className="money-row">
+        <span><i className="dot" style={{ background: '#8b5cf6' }} />
+          LLM tokens{' '}
+          <span className="muted">
+            ({comp.turns} turns, {comp.input_tokens.toLocaleString()} in
+            {' / '}{comp.output_tokens} out)
+          </span>
+        </span>
+        <b>{money(llm)} · {pct(drivers.llm_share)}</b>
+      </div>
+      {drivers.note && <p className="note">{drivers.note}</p>}
+      <p className="note">{cost.modelled.note}</p>
+    </section>
+  );
+}
+
+/* The observed half.
+
+   On a fresh deployment this is the *normal* state, not an error state, so it
+   reads as a status rather than a failure — and it says plainly which of the
+   two things above it is. */
+function CostObserved({ cost }) {
+  const observed = cost.observed;
+  const toolCalls = Object.entries(observed.tool_calls || {})
+    .sort((a, b) => b[1] - a[1]);
+
+  return (
+    <section>
+      <h2>What the real calls show</h2>
+      {observed.usable_calls > 0 ? (
+        <>
+          <span className="badge observed">OBSERVED</span>
+          <dl className="kv" style={{ marginTop: 9 }}>
+            <dt>avg / conversation</dt>
+            <dd>{money(observed.average_cost_per_conversation)}</dd>
+            <dt>blended / minute</dt>
+            <dd>{money(observed.blended_cost_per_minute)}</dd>
+            <dt>avg duration</dt>
+            <dd>{observed.average_duration_seconds}s</dd>
+            <dt>calls sampled</dt>
+            <dd>{observed.usable_calls} billable of {observed.call_count}</dd>
+          </dl>
+          {Object.keys(observed.unit_prices || {}).length > 0 && (
+            <>
+              <h2 style={{ marginTop: 14 }}>Your actual unit prices</h2>
+              <dl className="kv">
+                {Object.entries(observed.unit_prices).map(([product, price]) => (
+                  <React.Fragment key={product}>
+                    <dt>{product}</dt><dd>{usd(price, 6)}</dd>
+                  </React.Fragment>
+                ))}
+              </dl>
+              <p className="note">
+                Read straight from <code>call_cost.product_costs</code>. These are
+                what you were charged — put them in <code>pricing.json</code> and
+                the modelled numbers stop being a guess.
+              </p>
+            </>
+          )}
+        </>
+      ) : (
+        <p className="note warn">
+          {observed.call_count} call(s) sampled, {observed.usable_calls} billable.
+          Retell only returns <code>call_cost</code> and <code>latency</code> for
+          calls that connected, so until traffic exists every figure on this tab
+          is an estimate, not a record.
+        </p>
+      )}
+
+      {toolCalls.length > 0 && (
+        <>
+          <h2 style={{ marginTop: 14 }}>Tools the agent actually called</h2>
+          {toolCalls.map(([name, count]) => (
+            <div className="money-row" key={name}>
+              <span className="muted">🔧 {name}</span><b>{count}</b>
+            </div>
+          ))}
+        </>
+      )}
+
+      {Object.keys(observed.disconnections || {}).length > 0 && (
+        <>
+          <h2 style={{ marginTop: 14 }}>How calls ended</h2>
+          {Object.entries(observed.disconnections).map(([reason, count]) => (
+            <div className="money-row" key={reason}>
+              <span className="muted">{reason.replace(/_/g, ' ')}</span><b>{count}</b>
+            </div>
+          ))}
+        </>
+      )}
+
+      <p className="note">{cost.calibration.hint}</p>
+    </section>
+  );
+}
+
+/* Every number here is an input, not a measurement.
+
+   They are on screen because a cost model that cannot be argued with is not a
+   business case: the useful conversation is "our calls are nearer 2 minutes
+   than 3", and that requires the duration bands to be visible and editable
+   rather than buried in a formatter. */
+function Assumptions({ cost }) {
+  const a = cost.assumptions;
+  const p = cost.pricing;
+
+  return (
+    <section>
+      <h2>Inputs you can change</h2>
+      <dl className="kv">
+        <dt>call duration</dt>
+        <dd>{a.duration_minutes.low} / {a.duration_minutes.mid} / {a.duration_minutes.high} min</dd>
+        <dt>seconds / turn</dt><dd>{a.seconds_per_turn}</dd>
+        <dt>transcript / turn</dt><dd>{a.transcript_tokens_per_turn} tokens in</dd>
+        <dt>reply / turn</dt><dd>{a.output_tokens_per_turn} tokens out</dd>
+        <dt>volume</dt>
+        <dd>{a.conversations_per_day}/day · {a.days_per_month} days/month</dd>
+        <dt>call type</dt><dd>{p.call_type}</dd>
+      </dl>
+      <p className="note">
+        Duration is the lever that matters — it is ~{pct(
+          (cost.modelled.drivers || {}).voice_and_platform_share)} of the total.
+        Everything here can be overridden in <code>pricing.json</code>; the
+        defaults are deliberately round numbers, not measurements of your
+        traffic.
+      </p>
+
+      <h2 style={{ marginTop: 14 }}>Unit prices</h2>
+      <dl className="kv">
+        <dt>platform / min</dt><dd>{usd(p.platform_per_minute)}</dd>
+        <dt>TTS / min</dt><dd>{usd(p.tts_per_minute)}</dd>
+        <dt>telephony / min</dt><dd>{usd(p.telephony_per_minute)}</dd>
+        <dt>LLM in / 1k</dt><dd>{usd(p.llm_input_per_1k_tokens)}</dd>
+        <dt>LLM out / 1k</dt><dd>{usd(p.llm_output_per_1k_tokens)}</dd>
+        <dt>source</dt>
+        <dd className={cost.pricing_is_placeholder ? 'warn' : ''}>
+          {cost.pricing_is_placeholder ? 'placeholders (no pricing.json)' : p.source}
+        </dd>
+      </dl>
+    </section>
+  );
+}
+
+/* Latency, written so both audiences can read it.
+
+   The tail is the point: a mean of 1.2s can hide a p95 that callers describe as
+   "the robot keeps pausing", so p50 is never shown alone. */
+function LatencyPanel({ latency, audience }) {
+  const m = latency.modelled;
+  const observed = latency.observed || {};
+  const hasObserved = Object.keys(observed).length > 0;
+  const toolOverhead = m.per_tool_turn.p50 - m.per_turn.p50;
+
+  return (
+    <section>
+      <h2>{audience === 'business'
+        ? 'What the caller experiences'
+        : 'Latency — per turn'}</h2>
+      <div style={{ marginBottom: 8 }}>
+        <span className={'badge ' + (hasObserved ? 'observed' : 'modelled')}>
+          {hasObserved ? 'OBSERVED' : 'MODELLED'}
+        </span>
+      </div>
+
+      <p style={{ marginTop: 0 }}>
+        The agent starts speaking about <b>{m.per_turn.p50.toFixed(2)}s</b> after
+        the caller stops. One turn in ten takes longer than{' '}
+        <b>{m.per_turn.p90.toFixed(2)}s</b>, and the slowest handful reach{' '}
+        <b>{m.per_turn.p95.toFixed(2)}s</b>.
+      </p>
+      {m.tool_callable_nodes > 0 && (
+        <p>
+          {m.tool_callable_nodes} step{m.tool_callable_nodes === 1 ? '' : 's'} in
+          this flow wait{m.tool_callable_nodes === 1 ? 's' : ''} on another system
+          — a lookup, a booking — and adds roughly{' '}
+          <b>{toolOverhead.toFixed(2)}s</b> to that turn.
+        </p>
+      )}
+
+      <div className="stats">
+        <div className="stat">
+          <div className="n">{m.per_turn.p50.toFixed(2)}s</div>
+          <div className="l">p50, normal turn</div>
+        </div>
+        <div className="stat">
+          <div className="n">{m.per_turn.p95.toFixed(2)}s</div>
+          <div className="l">p95 — what callers feel</div>
+        </div>
+        <div className="stat">
+          <div className="n">{m.per_tool_turn.p50.toFixed(2)}s</div>
+          <div className="l">p50 when a tool fires</div>
+        </div>
+        <div className="stat">
+          <div className="n">{m.tool_callable_nodes}</div>
+          <div className="l">synchronous tool nodes</div>
+        </div>
+      </div>
+      <p className="note">{m.note}</p>
+      <p className="note">{latency.note}</p>
+    </section>
+  );
+}
+
+function NodeDetail({ node, annotation, tools, audience }) {
+  if (!node) {
+    // In the business view an empty "click a node" prompt costs a screenful of
+    // scroll and says nothing; per-node detail is a bonus there, not the point
+    // of the tab. Technical opens on it because that is where the work is.
+    if (audience === 'business') return null;
+    return (
+      <section>
+        <h2>Node detail</h2>
+        <p className="note">Click any node to see why it exists and what it is defending against.</p>
+      </section>
+    );
+  }
+  const tool = tools.find((t) => t.tool_id === node.tool_id);
+  return (
+    <section>
+      <h2>Node — {node.id}</h2>
+      <dl className="kv">
+        <dt>name</dt><dd>{node.name}</dd>
+        <dt>kind</dt><dd>{node.kind_label}</dd>
+        <dt>skill</dt><dd>{node.skill || '—'}{node.is_shared ? ' · shared spine' : ''}</dd>
+        <dt>prompt</dt><dd>{node.prompt_tokens} tokens</dd>
+        <dt>in-degree</dt><dd>{node.in_degree}</dd>
+      </dl>
+
+      {annotation && (
+        <>
+          <p style={{ marginTop: 11, marginBottom: 3 }}>
+            {annotation.curated
+              ? <span className="chip">curated annotation</span>
+              : <span className="chip">derived from node kind</span>}
+            {annotation.guardrail_stage && (
+              <> <span className="chip">guardrail: {annotation.guardrail_stage}</span></>
+            )}
+          </p>
+          <p style={{ margin: '8px 0 0' }}>{annotation.why}</p>
+          {annotation.failure_mode && (
+            <p className="note warn">Defends against: {annotation.failure_mode}</p>
+          )}
+        </>
+      )}
+
+      {tool && (
+        <>
+          <h2 style={{ marginTop: 14 }}>Tool</h2>
+          <dl className="kv">
+            <dt>name</dt><dd>{tool.name}</dd>
+            <dt>method</dt><dd>{tool.method}</dd>
+            <dt>timeout</dt><dd>{tool.timeout_ms} ms</dd>
+            <dt>max_retry</dt>
+            <dd>
+              {tool.max_retry}
+              {tool.retry_requires_idempotency && (
+                <span className="warn"> — retry is only safe because this endpoint is idempotent</span>
+              )}
+            </dd>
+            <dt>url</dt><dd className="muted">{tool.url}</dd>
+          </dl>
+        </>
+      )}
+
+      {node.instruction && (
+        <>
+          <h2 style={{ marginTop: 14 }}>Instruction</h2>
+          <div className="instr">{node.instruction}</div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/* A cluster, expanded. The summary answers "what does this do"; this answers
+   "what is in it", without forcing you into the full 31-node hairball. */
+function ClusterDetail({ cluster, graph, annotations, edges }) {
+  const members = cluster.nodes
+    .map((id) => graph.nodes.find((n) => n.id === id))
+    .filter(Boolean);
+  const inbound = edges.filter((e) => e.to === cluster.id);
+  const outbound = edges.filter((e) => e.from === cluster.id);
+
+  return (
+    <section>
+      <h2>Skill — {cluster.name}</h2>
+      <dl className="kv">
+        <dt>steps</dt><dd>{cluster.node_count}</dd>
+        <dt>code / model</dt><dd>{cluster.code_nodes} code · {cluster.model_nodes} model</dd>
+        <dt>prompt budget</dt><dd>{cluster.prompt_tokens} tokens</dd>
+        {cluster.tools.length > 0 && (
+          <><dt>tools</dt><dd>{cluster.tools.join(', ')}</dd></>
+        )}
+        {cluster.stages.length > 0 && (
+          <><dt>guardrails</dt><dd>{cluster.stages.join(' → ')}</dd></>
+        )}
+        <dt>entry</dt><dd>{cluster.entry_node || '—'}</dd>
+      </dl>
+
+      {(inbound.length > 0 || outbound.length > 0) && (
+        <>
+          <h2 style={{ marginTop: 14 }}>Aggregated transitions</h2>
+          {inbound.map((e) => (
+            <div className="money-row" key={'in' + e.id}>
+              <span className="muted">in ← {e.from}</span><b>{e.count}</b>
+            </div>
+          ))}
+          {outbound.map((e) => (
+            <div className="money-row" key={'out' + e.id}>
+              <span className="muted">out → {e.to}</span><b>{e.count}</b>
+            </div>
+          ))}
+        </>
+      )}
+
+      <h2 style={{ marginTop: 14 }}>Steps in this skill</h2>
+      {members.map((n) => {
+        const ann = (annotations || {})[n.id] || {};
+        return (
+          <div key={n.id} style={{ marginBottom: 9 }}>
+            <div>
+              <b>{n.name}</b>{' '}
+              <span className="muted">· {n.kind_label} · {n.prompt_tokens}t</span>
+            </div>
+            {ann.guardrail_stage && <span className="tag stage">{ann.guardrail_stage}</span>}{' '}
+            {n.tool_name && <span className="tag">🔧 {n.tool_name}</span>}{' '}
+            {n.is_shared && <span className="tag shared">shared</span>}
+            {ann.why && <div className="note">{ann.why}</div>}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+/* The audience switch, in one place.
+
+   This exists because the client tab returns a completely different document
+   and therefore skipped the toolbar that held the only copy of these buttons —
+   so once you were in it, there was no way back. Rendering the switch from a
+   single component is what makes that class of bug impossible rather than
+   merely fixed. */
+function AudienceTabs({ audience, onChange }) {
+  return (
+    <div className="tabs" role="tablist">
+      <button className="tab" role="tab"
+              aria-selected={audience === 'technical'}
+              onClick={() => onChange('technical')}>Technical</button>
+      <button className="tab" role="tab"
+              aria-selected={audience === 'business'}
+              onClick={() => onChange('business')}>Business</button>
+      <button className="tab" role="tab"
+              aria-selected={audience === 'client'}
+              onClick={() => onChange('client')}>Client</button>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------- client document --
+
+   The audience switch is most visible here: no React Flow, no sidebar, no zoom
+   controls — one readable column. A client is not diagnosing a system, they are
+   deciding whether to trust it, and a graph is the wrong artefact for that.
+
+   The drift banner is not decoration either. The rest of this tool *derives*
+   what it shows, so it cannot be wrong about the graph. This tab is written by
+   hand, which means it can — so it says out loud whether it currently matches
+   the system that is deployed.
+------------------------------------------------------------------------------ */
+
+const PATH_LABEL = { always: 'every call', if_relevant: 'when relevant' };
+
+function JourneyStep({ step }) {
+  return (
+    <div className={'step' + (step.stale ? ' stale' : '')}>
+      <div className="num">{step.order}</div>
+      <div className="card">
+        <h3>{step.title}</h3>
+        <p>{step.what_happens}</p>
+        {step.you_might_hear && (
+          <div className="hear">“{step.you_might_hear}”</div>
+        )}
+        <div className="chips">
+          <span className="chip">{PATH_LABEL[step.path] || step.path}</span>
+          {step.human && <span className="chip">a person steps in</span>}
+          {step.stages.map((s) => (
+            <span className="chip" key={s}>{s}</span>
+          ))}
+          {/* A node count is the one piece of machinery that belongs here: it is
+              the reader's evidence that the step is backed by something. */}
+          <span className="chip" title="Steps in the flow that implement this">
+            {step.node_count} step{step.node_count === 1 ? '' : 's'} of the flow
+          </span>
+          {step.stale && (
+            <span className="chip warn">
+              {step.missing.length} part(s) no longer in the flow
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ClientView({ snapshot, journey, audience, onAudience, onRefresh, loading }) {
+  if (!journey) {
+    return (
+      <div className="doc"><div className="doc-inner">
+        <div className="doc-bar">
+          <div className="title">{snapshot.agent.agent_name}</div>
+          <div className="spacer" />
+          <AudienceTabs audience={audience} onChange={onAudience} />
+        </div>
+        <p className="note">This agent has no conversation flow attached, so
+          there is no journey to describe.</p>
+      </div></div>
+    );
+  }
+
+  const { steps, guarantees, coverage, drift } = journey;
+
+  return (
+    <div className="doc">
+      <div className="doc-inner">
+        <div className="doc-bar">
+          <div>
+            <div className="title">{snapshot.agent.agent_name}</div>
+            <div className="sub">
+              {snapshot.agent.language} · {snapshot.agent.voice_id}
+            </div>
+          </div>
+          <div className="spacer" />
+          <AudienceTabs audience={audience} onChange={onAudience} />
+          <button onClick={onRefresh} disabled={loading}>
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
+
+        <h1>What happens when someone calls</h1>
+        <p className="lede">
+          This is the automated agent that answers the phone. It books services,
+          takes messages, explains rentals and warranty questions, and passes
+          anything it cannot resolve to a person.
+        </p>
+        <span className={'verified' + (drift.in_sync ? '' : ' bad')}>
+          {drift.in_sync
+            ? `✓ Checked against the system that is running — all ${coverage.total} steps accounted for`
+            : `⚠ This description is out of date: ${drift.missing_nodes.length} referenced step(s) no longer exist, ${drift.uncovered_nodes.length} step(s) of the flow are undescribed`}
+        </span>
+
+        <h2>The call, start to finish</h2>
+        {steps.map((step) => <JourneyStep step={step} key={step.id} />)}
+
+        <h2>What it will never do</h2>
+        <div>
+          {guarantees.map((g) => (
+            <div className={'guarantee' + (g.stale ? ' stale' : '')} key={g.id}>
+              <span className="tick">{g.stale ? '!' : '✓'}</span>
+              <span>
+                {g.plain}
+                <br />
+                <span className="why">
+                  {g.enforced_by.length} check
+                  {g.enforced_by.length === 1 ? '' : 's'} in the flow{' '}
+                  {g.enforced_by.length === 1 ? 'enforces' : 'enforce'} this
+                  {g.stale ? ` · ${g.missing.length} missing` : ''}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <p className="note">
+          Cost and technical detail live in the other two tabs. Nothing on this
+          page changes without the flow changing: every step above names the
+          parts of the flow that implement it, and the check at the top is run
+          against the live deployment each time this page loads.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------- app */
+function App() {  const [snapshot, setSnapshot] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState(null);
+  const [layoutMode, setLayoutMode] = useState('layered');
+  // Summarised by default, because the whole node graph is not legible at a
+  // size that also lets you see the whole graph. See `contract_graph`.
+  const [viewMode, setViewMode] = useState('summary');
+  // Which projection is on screen. The *graph* is identical in both — same
+  // snapshot, same clusters. What changes is the sidebar: same numbers, ordered
+  // by what that audience is trying to decide.
+  const [audience, setAudience] = useState('technical');
+
+  const switchAudience = (next) => {
+    setAudience(next);
+    // A node picked in the technical view means nothing in the business one,
+    // and the full 31-node graph is not what a business viewer opened this for.
+    setSelectedId(null);
+    if (next === 'business') setViewMode('summary');
+  };
+
+  const params = new URLSearchParams(window.location.search);
+  const agentId = params.get('agent_id');
+
+  const load = useCallback((refresh) => {
+    setLoading(true);
+    const qs = new URLSearchParams();
+    if (agentId) qs.set('agent_id', agentId);
+    if (refresh) qs.set('refresh', 'true');
+    fetch('/api/snapshot?' + qs.toString())
+      .then(async (r) => {
+        const body = await r.json();
+        if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+        setSnapshot(body);
+        setError(null);
+      })
+      .catch((e) => setError(String(e.message || e)))
+      .finally(() => setLoading(false));
+  }, [agentId]);
+
+  useEffect(() => { load(false); }, [load]);
+
+  const graph = snapshot && snapshot.flow;
+  const clusters = snapshot && snapshot.clusters;
+  const summary = viewMode === 'summary' && !!clusters;
+
+  // Node cards carry the annotation, because the curated "why" is the thing
+  // the raw Retell canvas cannot show.
+  const rfNodes = useMemo(() => {
+    if (!graph) return [];
+    if (summary) {
+      return clusters.nodes.map((c) => ({
+        id: c.id,
+        type: 'cluster',
+        draggable: true,
+        position: c.layout,
+        data: {
+          label: c.name,
+          kind: 'cluster',
+          node_count: c.node_count,
+          model_nodes: c.model_nodes,
+          code_nodes: c.code_nodes,
+          prompt_tokens: c.prompt_tokens,
+          tools: c.tools,
+          stages: c.stages,
+          is_shared: c.is_shared,
+        },
+      }));
+    }
+    const ann = snapshot.annotations || {};
+    return graph.nodes.map((n) => ({
+      id: n.id,
+      type: 'flow',
+      draggable: true,
+      position: layoutMode === 'retell' && n.position ? n.position : n.layout,
+      data: {
+        label: n.name,
+        kind: n.kind,
+        prompt_tokens: n.prompt_tokens,
+        tool_name: n.tool_name,
+        is_shared: n.is_shared,
+        guardrail_stage: (ann[n.id] || {}).guardrail_stage,
+      },
+    }));
+  }, [graph, clusters, layoutMode, snapshot, summary]);
+
+  const rfEdges = useMemo(() => {
+    if (!graph) return [];
+    const source = summary ? clusters.edges : graph.edges;
+    return source.map((e) => {
+      const meta = edgeStyle(e.kind);
+      return {
+        id: e.id,
+        source: e.from,
+        target: e.to,
+        type: 'smoothstep',
+        label: e.label,
+        labelStyle: { fill: meta.stroke, fontWeight: 600 },
+        labelBgPadding: [4, 2],
+        markerEnd: { type: MarkerType.ArrowClosed, color: meta.stroke, width: 14, height: 14 },
+        style: {
+          stroke: meta.stroke,
+          strokeWidth: e.kind === 'deterministic' ? 2 : 1.4,
+          strokeDasharray: meta.dash || undefined,
+          opacity: e.kind === 'llm' ? 0.75 : 1,
+        },
+      };
+    });
+  }, [graph, clusters, summary]);
+
+  if (error) {
+    return (
+      <div className="err">
+        <h2 style={{ marginTop: 0 }}>Could not load the snapshot</h2>
+        <pre>{error}</pre>
+        <p className="muted">
+          The server holds the Retell key. Check that <code>RETELL_API_KEY</code> is
+          set, that the agent id exists, and that this machine can reach{' '}
+          <code>api.retellai.com</code>.
+        </p>
+      </div>
+    );
+  }
+  if (loading && !snapshot) return <div className="loading">Loading flow snapshot…</div>;
+  if (!snapshot) return null;
+
+  // The client tab is a different document, not a different panel, so it
+  // returns before the canvas and sidebar are built at all.
+  if (audience === 'client') {
+    return (
+      <ClientView
+        snapshot={snapshot}
+        journey={snapshot.journey}
+        audience={audience}
+        onAudience={switchAudience}
+        onRefresh={() => load(true)}
+        loading={loading}
+      />
+    );
+  }
+
+  const metrics = graph ? graph.metrics : {};
+  const selectedCluster = summary
+    ? clusters.nodes.find((c) => c.id === selectedId)
+    : null;
+  const selected = (!selectedCluster && graph)
+    ? graph.nodes.find((n) => n.id === selectedId)
+    : null;
+  const annotation = selected ? (snapshot.annotations || {})[selected.id] : null;
+
+  return (
+    <div className="app">
+      <div className="canvas">
+        <div className="toolbar">
+          <div>
+            <div className="title">{snapshot.agent.agent_name}</div>
+            <div className="sub">
+              {snapshot.flow_id} ·{' '}
+              {audience === 'business' && clusters
+                ? clusters.nodes.length + ' skills · '
+                  + graph.nodes.length + ' steps · '
+                : (graph ? graph.nodes.length + ' nodes · ' : '')}
+              {(graph && graph.model_choice && graph.model_choice.model) || '—'}
+            </div>
+          </div>
+          <div className="spacer" />
+          <AudienceTabs audience={audience} onChange={switchAudience} />
+          <div className="tabs">
+            <button className="tab" aria-selected={viewMode === 'summary'}
+                    onClick={() => setViewMode('summary')}>Summarised</button>
+            <button className="tab" aria-selected={viewMode === 'full'}
+                    onClick={() => setViewMode('full')}>Full graph</button>
+          </div>
+          {viewMode === 'full' && audience === 'technical' && (
+            <button onClick={() => setLayoutMode(layoutMode === 'layered' ? 'retell' : 'layered')}>
+              {layoutMode === 'layered' ? 'Retell layout' : 'Layered layout'}
+            </button>
+          )}
+          <button onClick={() => load(true)} disabled={loading}>
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+          {snapshot.agent.url && (
+            <a href={snapshot.agent.url} target="_blank" rel="noreferrer">
+              <button>Open in Retell ↗</button>
+            </a>
+          )}
+        </div>
+
+        {graph ? (
+          <ReactFlow
+            key={viewMode + ':' + layoutMode}
+            nodes={rfNodes}
+            edges={rfEdges}
+            nodeTypes={nodeTypes}
+            onNodeClick={(_, node) => setSelectedId(node.id)}
+            onPaneClick={() => setSelectedId(null)}
+            nodesConnectable={false}
+            fitView
+            fitViewOptions={{ padding: 0.12 }}
+            minZoom={0.05}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background gap={22} color="#dbe3ec" />
+            <MiniMap pannable zoomable nodeStrokeWidth={2} />
+            <Controls />
+          </ReactFlow>
+        ) : (
+          <div className="loading">
+            This agent has no conversation flow attached (it may use a
+            single-prompt engine instead).
+          </div>
+        )}
+      </div>
+
+      <div className="side">
+        <section>
+          <h2>Snapshot</h2>
+          <dl className="kv">
+            <dt>agent</dt><dd>{snapshot.agent.agent_id}</dd>
+            <dt>voice</dt><dd>{snapshot.agent.voice_id}</dd>
+            <dt>language</dt><dd>{snapshot.agent.language}</dd>
+            <dt>flow version</dt><dd>{graph ? graph.version : '—'}</dd>
+            <dt>generated</dt><dd>{new Date(snapshot.generated_at).toLocaleString()}</dd>
+          </dl>
+        </section>
+
+        {/* Same numbers, different order. This is the whole "one model, three
+            projections" claim, and it is deliberately as boring as it looks:
+            the reader's question decides the sequence, nothing else does. */}
+        {graph && audience === 'business' && (
+          <>
+            <CostHeadline cost={snapshot.metrics.cost} />
+            <VolumeTable cost={snapshot.metrics.cost} />
+            <CostComposition cost={snapshot.metrics.cost} />
+            <LatencyPanel latency={snapshot.metrics.latency} audience="business" />
+            <CostObserved cost={snapshot.metrics.cost} />
+            <Assumptions cost={snapshot.metrics.cost} />
+          </>
+        )}
+
+        {graph && audience === 'technical' && (
+          <>
+            <section>
+              <h2>Deterministic spine</h2>
+              <div className="stats">
+                <div className="stat">
+                  <div className="n">{metrics.deterministic_nodes}</div>
+                  <div className="l">code nodes (function + branch)</div>
+                </div>
+                <div className="stat">
+                  <div className="n">{metrics.deterministic_edges}</div>
+                  <div className="l">transitions code decides</div>
+                </div>
+                <div className="stat">
+                  <div className="n">{metrics.model_judged_edges}</div>
+                  <div className="l">transitions the model judges</div>
+                </div>
+                <div className="stat">
+                  <div className="n">{metrics.shared_node_count}</div>
+                  <div className="l">shared-spine nodes</div>
+                </div>
+              </div>
+              <dl className="kv" style={{ marginTop: 10 }}>
+                <dt>global prompt</dt><dd>{metrics.global_prompt_tokens} tokens</dd>
+                <dt>worst turn</dt><dd>{metrics.worst_case_turn_context_tokens} tokens</dd>
+                <dt>mean node</dt><dd>{metrics.mean_node_prompt_tokens} tokens</dd>
+                <dt>annotated</dt>
+                <dd>{metrics.annotated_nodes} / {metrics.node_count} nodes</dd>
+              </dl>
+              {graph.dangling_edges && graph.dangling_edges.length > 0 && (
+                <p className="note warn">
+                  {graph.dangling_edges.length} edge(s) point at a missing node.
+                </p>
+              )}
+            </section>
+
+            <Legend metrics={metrics} />
+            <LatencyPanel latency={snapshot.metrics.latency} audience="technical" />
+            <CostHeadline cost={snapshot.metrics.cost} />
+            <CostComposition cost={snapshot.metrics.cost} />
+            <CostObserved cost={snapshot.metrics.cost} />
+          </>
+        )}
+
+        {graph && (selectedCluster ? (
+          <ClusterDetail
+            cluster={selectedCluster}
+            graph={graph}
+            annotations={snapshot.annotations}
+            edges={clusters.edges}
+          />
+        ) : (
+          <NodeDetail node={selected} annotation={annotation} tools={graph.tools}
+                      audience={audience} />
+        ))}
+
+        {graph && (
+          <section>
+            <h2>{audience === 'business'
+              ? 'What the flow actually does'
+              : (summary ? 'Skills — the summary you are looking at' : 'Skills')}</h2>
+            {clusters.nodes.map((c) => (
+              <div key={c.id} style={{ padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <div className="money-row">
+                  <span>
+                    {c.name}{' '}
+                    <span className="muted">{c.code_nodes}c/{c.model_nodes}m</span>
+                  </span>
+                  <b>{c.node_count} step{c.node_count === 1 ? '' : 's'}</b>
+                </div>
+                {c.tools.length > 0 && (
+                  <div className="muted" style={{ fontSize: 11 }}>
+                    🔧 {c.tools.join(', ')}
+                  </div>
+                )}
+              </div>
+            ))}
+            <p className="note">
+              {clusters.edges.length} aggregated transitions between skills,{' '}
+              {clusters.internal_transitions} inside them. Derived by
+              reachability and predecessor analysis from the router's edges —
+              not a hand-maintained list, so adding a node does not mean
+              editing a diagram.
+            </p>
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
