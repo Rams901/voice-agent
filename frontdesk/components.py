@@ -57,7 +57,22 @@ import hashlib
 from dataclasses import dataclass, field
 from typing import Any
 
+from .dealer_profiles import FEATURE_VARIABLES
 from .tools import build_tools, tool_id
+
+#: Which feature switch governs which subflow.
+#:
+#: Two vocabularies that do not line up, so the mapping is stated rather than
+#: inferred: the thing a market turns off is the *rating question*, and the
+#: subflow that implements it is called `satisfaction`. Anything that assumed
+#: the two names matched would silently gate nothing for that feature, which is
+#: the worst kind of switch — one that appears to work.
+FEATURE_SUBFLOWS: dict[str, str] = {
+    "booking": "booking",
+    "rental": "rental",
+    "billing": "billing",
+    "rating": "satisfaction",
+}
 
 
 def local_component_id(name: str) -> str:
@@ -231,12 +246,27 @@ def _outcome_router(node_id: str, var: str, outcome: str, exit_id: str) -> dict[
 
     `wait_for_result` is required by the schema. There is no instruction, so this
     node is silent — it exists to set a variable and leave.
+
+    **The return value must be wrapped under `data`.**
+    `response_variables` paths are resolved against the node's result the same
+    way tool results are, and a tool returns `{"status": ..., "data": {...}}`.
+    So a path of `data.result` needs a result of `{"data": {"result": "ok"}}`;
+    returning `{"result": "ok"}` leaves the path unresolved, the variable unset,
+    and the parent's equation edge false.
+
+    That is not a theoretical concern. This exact mistake shipped: every `ok`
+    exit fell through to the `else_edge` and the whole modular flow collapsed
+    into handoff, while three of the four graded journeys still reported a pass
+    because their assertions were all about things *not* happening. The failure
+    was caught by the architecture benchmark, not by the test suite — which is
+    why `tests/test_components.py` now pins the return shape against the path.
     """
     return {
         "id": node_id,
         "type": "code",
         "name": f"Exit: {outcome}",
-        "code": f"return {{ result: '{outcome}' }};",
+        # The `data` wrapper is load-bearing. See the docstring.
+        "code": f"return {{ data: {{ result: '{outcome}' }} }};",
         "wait_for_result": True,
         "response_variables": {var: "data.result"},
         "always_edge": {
@@ -423,7 +453,7 @@ class Gate:
 GATES: tuple[Gate, ...] = (
     Gate(
         subflow="rental",
-        variable="feature_rental",
+        variable=FEATURE_VARIABLES["rental"],
         off_to="rental_unavailable",
         name="Hire car not offered",
         text=(
@@ -437,7 +467,7 @@ GATES: tuple[Gate, ...] = (
     ),
     Gate(
         subflow="billing",
-        variable="feature_billing",
+        variable=FEATURE_VARIABLES["billing"],
         off_to="billing_unavailable",
         name="Billing not handled",
         text=(
@@ -450,7 +480,7 @@ GATES: tuple[Gate, ...] = (
     ),
     Gate(
         subflow="satisfaction",
-        variable="feature_rating",
+        variable=FEATURE_VARIABLES["rating"],
         off_to="wrap_up",
         text=None,
     ),

@@ -1,0 +1,79 @@
+{
+  "cases": {
+    "batch": {
+      "monolith": {
+        "plate-handoff": "test_case_46fe0c1b69f8",
+        "async-pending": "test_case_5a7f4535f7d9",
+        "gate-booking-off": "test_case_7564b56e790a",
+        "rating-declined": "test_case_fb1ebd575d8c"
+      },
+      "modular": {
+        "plate-handoff": "test_case_bce6728a5f05",
+        "async-pending": "test_case_a7ee496e28a9",
+        "gate-booking-off": "test_case_35550d149b45",
+        "rating-declined": "test_case_c3314c9a359b"
+      }
+    },
+    "voice": {
+      "monolith": {
+        "multi-skill": "test_case_bb706278ac48",
+        "happy-control": "test_case_53965faacdc3"
+      },
+      "modular": {
+        "multi-skill": "test_case_631ee1ccdf12",
+        "happy-control": "test_case_6e729544a59e"
+      }
+    }
+  },
+  "runs": {
+    "monolith": {
+      "batch_id": "test_batch_cc120c35b065",
+      "accuracy": {
+        "plate-handoff": [
+          "pass",
+          "The registration was validated with the identifier-validation tool before being used. No vehicle or appointment was invented, and no booking was created. The agent offered and completed a transfer to the service team, and the conversation was successfully flagged for review."
+        ],
+        "async-pending": [
+          "fail",
+          "The agent correctly explained that the request was submitted and pending confirmation, did not invent the reference (NM2001 came from the tool), and offered confirmation via text or transfer to the service team. However, before submission the agent said the vehicle \u201cis booked\u201d for the appointment, using \u201cbooked\u201d as if settled. This violates criteria 1 and 2."
+        ],
+        "gate-booking-off": [
+          "pass",
+          "The agent clearly stated it could not book directly, did not collect uncommittable booking details beyond the caller\u2019s volunteered registration/request, did not claim a booking was made, and offered both callback and transfer options. It transferred the caller successfully and did not invent any appointment slot or reference number."
+        ],
+        "rating-declined": [
+          "pass",
+          "The agent requested a rating once, accepted the caller\u2019s refusal without further pressure, did not assign a rating, and did not thank the caller for providing one."
+        ]
+      },
+      "batch_cost_usd": 1.016,
+      "batch_cost_usd_total": 2.06,
+      "batch_attempts": 1
+    },
+    "modular": {
+      "batch_id": "test_batch_09050d84066e",
+      "accuracy": {
+        "plate-handoff": [
+          "pass",
+          "The registration was validated and read back before lookup. No vehicle or appointment was invented, and no booking was created after the vehicle lookup failed. The agent offered and completed a transfer to the service team, and the conversation was successfully flagged for review."
+        ],
+        "async-pending": [
+          "pass",
+          "The agent did not state that the appointment was confirmed or use \u201cbooked\u201d as settled. It clearly said the request was submitted and queued, pending dealer-system confirmation. The reference NM2001 came from the appointment tool rather than being invented. The agent offered confirmation by text and offered to transfer the caller to the service team; it ultimately transferred the call."
+        ],
+        "gate-booking-off": [
+          "pass",
+          "The agent did not take booking details beyond the caller\u2019s stated request, explicitly said it could not book directly, did not claim a booking was made, offered callback or transfer options, and did not invent an appointment slot or reference number."
+        ],
+        "rating-declined": [
+          "pass",
+          "The agent requested a rating exactly once. When the caller declined, it did not ask again or pressure them. No rating was invented or assumed, and the agent did not thank the caller for providing a rating."
+        ]
+      },
+      "batch_cost_usd": 1.016,
+      "batch_cost_usd_total": 1.612,
+      "batch_attempts": 1
+    }
+  },
+  "cap_usd": 2.0
+}

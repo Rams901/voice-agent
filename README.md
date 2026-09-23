@@ -482,6 +482,108 @@ exposure × cost-to-fix — *while* the flagged-call queue is watched continuous
 
 ---
 
+## Benchmarking the two architectures
+
+The modular flow exists to be turned on and off per market, which is a claim
+about structure. Nothing about that claim is visible in a unit test, so the two
+architectures are measured against each other:
+
+```bash
+python -m frontdesk.cli benchmark plan      # the suite and its cost, spends nothing
+python -m frontdesk.cli benchmark prepare --arm batch
+python -m frontdesk.cli benchmark run --arm batch --yes --cap-usd 2.00
+python -m frontdesk.cli benchmark prepare --arm voice   # writes the call script
+python -m frontdesk.cli benchmark report
+```
+
+**Six journeys, two arms, because the platform bills and reports them
+differently.** Batch runs bill per message and return a graded pass/fail *and
+the transcript*, but no latency and no cost. Voice calls bill per minute and
+return `latency.*` percentiles and an itemised `call_cost`, but cost a few
+hundred times more per run. So accuracy is bought where it is cheap and
+repeatable, and voice minutes are spent on two journeys whose length brackets a
+typical call — `multi-skill`, which crosses three subflows, and the happy path
+as a control.
+
+Five journeys were added for this. The existing scenarios test the flow's
+*judgement*; none of them crosses three skills and none can be switched off, so
+none of them would notice a broken boundary:
+
+| Journey | Arm | What it pins |
+|---|---|---|
+| `multi-skill` | voice | plate → booking → rental → rating in one call |
+| `happy-control` | voice | the unchanged happy path, as a control |
+| `plate-handoff` | batch | the plate → handoff boundary |
+| `async-pending` | batch | the third booking outcome, distinct from success |
+| `gate-booking-off` | batch | a skill switched off for a market |
+| `rating-declined` | batch | refusing the rating, and not being pressed |
+
+### The budget is a control, not an estimate
+
+The cap is enforced in code. `Budget` refuses to start work it cannot afford
+rather than warning afterwards, the guard is **seeded with what each
+architecture has already cost**, and batch cost is derived from real transcript
+message counts at published per-message rates — labelled as an estimate wherever
+it appears, because a figure that looks measured but is not is worse than none.
+Voice cost is the platform's own itemised number.
+
+### What the first run found
+
+The benchmark earned its keep immediately, and not in the way it was meant to.
+It caught a bug that **no test in this repository noticed and that three of four
+graded journeys still reported as a pass.**
+
+The component exit router returned `{ result: 'ok' }` while declaring a
+`response_variables` path of `data.result`. Retell resolves those paths against
+the node's result using the same convention as tool results — which are wrapped
+as `{"status": …, "data": {…}}`. So the path resolved to nothing, the variable
+was never set, and every equation edge reading it was false. Every `ok` exit
+fell through to its fallback, and **the entire modular flow collapsed into
+handoff at the first opportunity on every call**: no booking, no availability
+check, no rating.
+
+The graded journeys did not catch it because the failures were graded as passes.
+`rating-declined` asserted "asked for a rating at most once" and "did not invent
+a rating" — every one of those is an assertion that something *did not happen*,
+so all of them pass when the rating is never reached at all. The journey never
+got near the rating and scored 100%.
+
+Both problems are now pinned by tests:
+
+- `tests/test_components.py` checks every router's declared path against the
+  literal its code returns, so the two can never drift apart again.
+- `rating-declined` gained a positive assertion — the booking must have been
+  completed and a reference given *before* the rating — making it unfakeable.
+
+After the fix, the modular transcript shows the real path
+(`validate → exit(ok) → check_availability → create_appointment → verify →
+record_feedback`), where before it showed `validate → exit(ok) → flag →
+transfer`.
+
+### What the numbers do and do not say
+
+Post-fix, the two architectures are **equivalent on the graded set** — and that
+is the honest limit of what one run per journey can tell you. `async-pending`
+failed on the monolith in the second run having passed in the first, and passed
+on the modular in the second having failed in the first. **n=1 per journey is
+noise.** A journey that measures a real difference between the architectures
+cannot be distinguished from one that is merely flaky at this sample size, and
+the report says so rather than picking the flattering run.
+
+The voice arm is where cost and latency come from, and those calls have to be
+made by hand: Retell's simulation is text-only and a web call expects a person
+on a microphone. `benchmark prepare --arm voice` writes
+`scenarios/10-benchmark-calls.md` with the exact command and script per journey,
+so both architectures hear the same caller.
+
+The architecture-relevant part of latency is small and known: measured calls put
+`latency.e2e` at ~1.8s while `latency.llm` is ~0.6s, so ASR, TTS and network
+dominate and are identical across both. Structure can only move the LLM portion
+and the number of round-trips per journey — which is why the transcript turn
+count matters more here than the total call duration.
+
+---
+
 ## Limitations and honest caveats
 
 - **The DMS is mocked.** `dms.py` implements the canonical interface with

@@ -151,9 +151,22 @@ class RetellClient:
     def list_batch_tests(self, limit: int = 20) -> list[dict[str, Any]]:
         return self._request("GET", "/list-batch-tests", params={"limit": limit})
 
-    def list_test_runs(self, batch_id: str, limit: int = 100) -> list[dict[str, Any]]:
-        return self._request("GET", f"/list-test-runs/{batch_id}",
-                             params={"limit": limit})
+    def list_test_runs(self, batch_id: str, limit: int | None = None) -> list[dict[str, Any]]:
+        """Runs in a batch.
+
+        `limit` is accepted by the published schema but rejected by the live
+        endpoint ("Unknown query parameter 'limit'"), and the SDK omits it too —
+        so it is only sent when asked for, rather than being trusted because the
+        OpenAPI document lists it.
+        """
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = limit
+        response = self._request("GET", f"/v2/list-test-runs/{batch_id}",
+                                 params=params or None)
+        if isinstance(response, dict):
+            return response.get("items", [])
+        return response
 
 
 def conversation_flow_engine(flow_id: str) -> dict[str, Any]:

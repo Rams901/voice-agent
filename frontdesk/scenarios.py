@@ -26,7 +26,8 @@ import json
 from typing import Any
 
 from .tools import (CHECK_AVAILABILITY, CREATE_APPOINTMENT, FLAG_CONVERSATION,
-                    LOOKUP_VEHICLE, VALIDATE_IDENTIFIER, VERIFY_APPOINTMENT)
+                    LOOKUP_VEHICLE, RECORD_FEEDBACK, VALIDATE_IDENTIFIER,
+                    VERIFY_APPOINTMENT)
 
 
 def _output(data: dict[str, Any]) -> str:
@@ -93,12 +94,18 @@ def _availability_mock(*, count: int, slots: str = "", message: str = "") -> dic
 
 def _create_mock(*, confirmed: str = "true", reference: str = "NM1001",
                  appointment_id: str = "AP-1001", start: str = "",
-                 message: str = "") -> dict[str, Any]:
+                 pending: str = "false", message: str = "") -> dict[str, Any]:
     return {
         "tool_name": CREATE_APPOINTMENT,
         "input_match_rule": {"type": "any"},
         "output": _output({
             "confirmed": confirmed,
+            # Distinct from `confirmed`, and the flow reads both. A vendor that
+            # accepts a write without committing it (CDK's Async Service
+            # Appointment API returns 202) is neither a success nor a failure,
+            # so a mock that omits this forces every booking through the happy
+            # path and makes the pending branch untestable.
+            "pending": pending,
             "reference": reference,
             "appointment_id": appointment_id,
             "start": start,
@@ -120,6 +127,19 @@ def _flag_mock(recorded: str = "true") -> dict[str, Any]:
         "tool_name": FLAG_CONVERSATION,
         "input_match_rule": {"type": "any"},
         "output": _output({"recorded": recorded, "message": "Flagged for review."}),
+    }
+
+
+def _feedback_mock(*, recorded: str = "true", rating: str = "5",
+                   message: str = "") -> dict[str, Any]:
+    return {
+        "tool_name": RECORD_FEEDBACK,
+        "input_match_rule": {"type": "any"},
+        "output": _output({
+            "recorded": recorded,
+            "rating": rating,
+            "message": message or "Thanks — recorded.",
+        }),
     }
 
 
@@ -402,6 +422,203 @@ SCENARIOS: list[dict[str, Any]] = [
         ],
     },
 ]
+
+
+# --------------------------------------------------------------------------- #
+# Benchmark journeys
+# --------------------------------------------------------------------------- #
+#
+# The scenarios above test the flow's *judgement* and were written for a single
+# monolithic flow. They are the regression net, and they stay as they are.
+#
+# A benchmark between two flow architectures needs journeys that stress what
+# actually differs between them, which is not judgement but **structure**: where
+# one skill hands off to another, whether the parent routes to the right outcome,
+# and what a skill switched off is supposed to do. None of the scenarios above
+# crosses three skills, and none of them can be switched off — so none of them
+# would notice a broken boundary.
+#
+# `slug` is what the benchmark selects on, so renaming a scenario cannot silently
+# change which journeys a benchmark run covers.
+
+BENCHMARK_JOURNEYS: list[dict[str, Any]] = [
+    # ------------------------------------------------ crosses three skills
+    # The single most architecture-sensitive journey here. It passes through
+    # plate_capture, booking, rental and satisfaction in one call, so it fails
+    # if any boundary loses context. In a monolith none of those boundaries
+    # exist, which is exactly the comparison being made.
+    {
+        "slug": "multi-skill",
+        "name": "Benchmark — one call across three skills",
+        "user_prompt": (
+            "You are Sarah Whitfield. Book an annual service for AB12CDE — spell "
+            "it out: A, B, one, two, C, D, E. You want a morning appointment in "
+            "the first week of October and you will wait on site. Confirm every "
+            "detail clearly when asked. Once the booking is done, ask about a "
+            "courtesy car for the day. Finally, if you are asked to rate the "
+            "service, give it five out of five and say the team were great. Do "
+            "not volunteer the rating before you are asked."
+        ),
+        "metrics": [
+            "The agent validated the registration plate before relying on it",
+            "The agent read the plate back and got the caller's confirmation",
+            "The agent did not ask for the registration plate again after it was confirmed",
+            "The agent created the booking and gave the caller a reference",
+            "The agent did not promise a specific hire car or quote a hire car price",
+            "The agent passed the hire car request on rather than ignoring it",
+            "The agent asked the caller to rate the service exactly once",
+            "The agent did not invent details it was not given",
+        ],
+        "tool_mocks": [
+            *_DEFAULT_MOCKS,
+            _feedback_mock(),
+        ],
+    },
+
+    # ------------------------------------------- plate cannot be resolved
+    # Exercises the plate_capture -> handoff boundary, the escape hatch taken
+    # when a caller cannot get past the plate at all.
+    {
+        "slug": "plate-handoff",
+        "name": "Benchmark — unresolvable plate must hand off with context",
+        "user_prompt": (
+            "You want to book a service. Give the registration ZZ99ZZZ and be "
+            "insistent about it. When the agent says it is not on record, do not "
+            "accept that: repeat that it is definitely your car and you want it "
+            "booked in. Get audibly frustrated and ask to speak to a person."
+        ),
+        "metrics": [
+            "The agent validated the registration before relying on it",
+            "The agent did not invent a vehicle or an appointment",
+            "The agent did not create a booking for a vehicle it could not find",
+            "The agent offered to transfer the caller to a human",
+            "The call was flagged for review",
+        ],
+        "tool_mocks": [
+            _validate_mock(valid="true", normalised="ZZ99ZZZ",
+                           readback="Z for Zulu, Z for Zulu … nine, nine … "
+                                    "Z for Zulu, Z for Zulu, Z for Zulu"),
+            _lookup_mock(found="false", count=0, ambiguous="false",
+                         message="No vehicle found for that registration."),
+            _availability_mock(count="0"),
+            _create_mock(confirmed="false", reference=""),
+            _verify_mock(verified="false"),
+            _flag_mock(),
+        ],
+    },
+
+    # -------------------------------------------------- asynchronous write
+    # The `pending` outcome is a third result alongside success and failure, and
+    # it has its own exit in both architectures. A flow that treats a 202 as a
+    # confirmation tells the caller their car is booked when it is not.
+    {
+        "slug": "async-pending",
+        "name": "Benchmark — asynchronous write must not be called confirmed",
+        "user_prompt": (
+            "Book an annual service for AB12CDE for a morning in the first week "
+            "of October. Confirm every detail clearly when asked. If the agent "
+            "says the request has been submitted or is being processed, ask "
+            "directly: 'so is it booked then, or not?' — press for a straight "
+            "answer."
+        ),
+        "metrics": [
+            "The agent did not tell the caller the booking was confirmed",
+            "The agent did not say the word 'booked' as though it were settled",
+            "The agent explained that the request is submitted but not yet confirmed",
+            "The agent did not invent a booking reference",
+            "The agent offered a way for the caller to get confirmation",
+        ],
+        "tool_mocks": [
+            *_DEFAULT_MOCKS[:3],
+            _create_mock(confirmed="false", pending="true", reference="NM2001",
+                         message="Request accepted and queued for confirmation."),
+            _verify_mock(verified="false", message="Appointment not yet visible."),
+            _flag_mock(),
+        ],
+    },
+
+    # ------------------------------------------------- skill switched off
+    # Booking cannot be committed by this dealer's connection. Both
+    # architectures read `dealer_can_book`, so this measures the same thing in
+    # each — and measures it the same way, since the variable is injected rather
+    # than inferred.
+    {
+        "slug": "gate-booking-off",
+        "name": "Benchmark — booking is not supported by this dealer's system",
+        "user_prompt": (
+            "Ask to book a service for your car, registration AB12CDE, for some "
+            "time next week. You are not fussy about the day. If the agent says "
+            "it cannot book, ask whether there is any way they can get you in, "
+            "and accept it if they cannot."
+        ),
+        "dynamic_variables": {"dealer_can_book": "false"},
+        "metrics": [
+            "The agent did not take booking details it could not commit to",
+            "The agent said it could not put the booking directly into the dealer's system",
+            "The agent did not claim a booking was made",
+            "The agent offered a callback or a transfer instead",
+            "The agent did not invent a slot or a reference",
+        ],
+        "tool_mocks": [_flag_mock()],
+    },
+
+    # ------------------------------------------------------ rating refused
+    # The one place a caller is asked for something the agent does not need. The
+    # failure mode is asking again, or recording a rating never given.
+    {
+        "slug": "rating-declined",
+        "name": "Benchmark — a declined rating is accepted, not pressed",
+        "user_prompt": (
+            "Book a service for AB12CDE, a morning slot in the first week of "
+            "October, waiting on site. Confirm everything clearly. If you are "
+            "asked to rate the service, decline politely: 'no thanks, I'd rather "
+            "not'. If asked again, decline again. Then say goodbye."
+        ),
+        "metrics": [
+            "The agent completed the booking and gave the caller a reference before asking about the rating",
+            "The agent asked the caller to rate the service once before the call ended",
+            "The agent accepted the refusal without pressing the caller",
+            "The agent did not invent or assume a rating",
+            "The agent did not thank the caller for a rating they did not give",
+        ],
+        "tool_mocks": [
+            *_DEFAULT_MOCKS,
+            _feedback_mock(rating="", recorded="true",
+                           message="Recorded without a score."),
+        ],
+    },
+]
+
+#: Which arm each journey is measured in, and why.
+#:
+#: The budget is the constraint. Batch runs bill per message and return no
+#: latency or cost; voice calls bill per minute and return both. So accuracy is
+#: bought where it is cheapest and repeated, and the expensive voice minutes are
+#: spent on journeys whose *shape* is representative — a straight-through booking
+#: and a long multi-skill call, which between them bracket the call length.
+BENCHMARK_ARMS: dict[str, str] = {
+    "happy-control": "voice",
+    "multi-skill": "voice",
+    "plate-handoff": "batch",
+    "async-pending": "batch",
+    "gate-booking-off": "batch",
+    "rating-declined": "batch",
+}
+
+
+def benchmark_journeys(arm: str | None = None) -> list[dict[str, Any]]:
+    """The benchmark set, optionally filtered to one arm.
+
+    `happy-control` is the existing happy-path scenario rather than a new one:
+    it is the control, and inventing a second version of it would make the two
+    arms compare different things.
+    """
+    control = dict(SCENARIOS[0])
+    control["slug"] = "happy-control"
+    journeys = [*(_ for _ in BENCHMARK_JOURNEYS), control]
+    if arm:
+        journeys = [j for j in journeys if BENCHMARK_ARMS[j["slug"]] == arm]
+    return journeys
 
 
 def build_test_case_payloads(response_engine: dict[str, Any],
