@@ -1,8 +1,19 @@
 # Frontdesk — a modular, guardrailed voice booking agent
 
-Frontdesk answers the phone for a dealership service department: it books, moves
-and cancels service appointments, and hands the caller to a person when a person
-should take over.
+Frontdesk answers the phone for a dealership service department. It books, moves
+and cancels service appointments, quotes and explains, handles a rental or a
+warranty question — and hands the caller to a person when a person should take
+over.
+
+It is built around the two failure modes that actually kill these systems in
+production, neither of which is fixed by a better model:
+
+1. **Long calls degrade.** The rules compete, adherence drifts, and facts that
+   were established early have to be re-derived from a transcript that keeps
+   growing.
+2. **A high-stakes identifier gets misheard.** A registration plate, a bank
+   detail, a date. Nothing in the flow was positioned to catch it, so the wrong
+   value is committed and confirmed as if it were right.
 
 The whole design fits in one sentence:
 
@@ -194,9 +205,9 @@ value explicitly rather than assuming the default is what is running.
 
 ---
 
-## The two failures, and what actually fixes them
+## The two failure classes, and what actually fixes them
 
-### Failure A — "on long calls it hallucinates / forgets earlier details"
+### Failure A — forgetting and drift on long calls
 
 The tempting answer is "the prompt is too long". The real mechanisms are:
 
@@ -220,11 +231,11 @@ baseline monolith        : ~14,000 tokens in ONE prompt across 190 nodes
 The number matters less than the shape: **no node needs to know about any other
 node.** That is what stops drift and forgetting — not the smaller count.
 
-### Failure B — "a license plate letter was misheard and nothing caught it"
+### Failure B — a misheard plate that nothing catches
 
 This one is more revealing, because it is **not an ASR problem**. Replacing the
 speech model changes the error *rate*; it does nothing about an architecture with
-no control in it. The plate was wrong because eight controls were missing in a
+no control in it. A plate ends up wrong because eight controls are missing in a
 row:
 
 ```
@@ -689,8 +700,8 @@ Three things the Retell API does not expose, and the diagram computes instead:
 
 ### Cost and latency, honestly labelled
 
-Cost and latency come in two kinds, and
-conflating them is how an estimate becomes a commitment:
+Cost and latency come in two kinds, and conflating them is how an estimate
+becomes a commitment:
 
 - **MODELLED** — from the flow's own prompt budget and a pricing table
   (`pricing.json`). Available immediately. Duration dominates the answer, so it

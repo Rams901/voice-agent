@@ -1,7 +1,7 @@
 """Keyloop adapter, shaped after the public Service Appointment Booking (SAB) API.
 
 Keyloop dominates franchise groups in the UK, Europe, the Middle East and Asia,
-so for this design it is the most likely first adapter. Their Open Platform exposes
+so it is the most likely first adapter. Their Open Platform exposes
 SAB as a set of endpoints that mirror the booking workflow rather than a single
 "create booking" call:
 

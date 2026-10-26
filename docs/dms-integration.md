@@ -1,7 +1,7 @@
 # DMS integration — the landscape, the contract, and how to proceed
 
-One voice flow has to work across ten more dealer/DMS
-integrations". This document is the answer to *how*, and it is deliberately
+One voice flow has to work across ten more dealer/DMS integrations. This
+document is about *how*, and it is deliberately
 about the part that is hardest and least discussed: the integrations are not ten
 versions of the same thing.
 

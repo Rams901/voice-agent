@@ -1,7 +1,7 @@
 """Simulation scenarios for regression testing.
 
 These are the two failure classes this system exists to defend against, plus
-them, turned into executable tests. The point of writing them as code is the
+the classes that follow from them, turned into executable tests. The point of writing them as code is the
 project's own thesis: *if we solve the same problem repeatedly, we should build a
 system that solves it for us.*
 
