@@ -446,8 +446,8 @@ def _benchmark_plan(cap_usd: float) -> int:
             print(f"      estimated batch cost: ${per:.2f} per architecture "
                   f"(per-message rates, not billed-verified)")
         else:
-            print(f"      voice cost is billed per minute: measured, "
-                  f"~$0.31/call historically")
+            print("      voice cost is billed per minute: measured, "
+                  "~$0.31/call historically")
 
     print(f"\n  budget : ${cap_usd:.2f} per architecture")
     for name, spec in ARCHITECTURES.items():
@@ -520,7 +520,7 @@ def _voice_script() -> str:
 
 
 def cmd_benchmark(args: argparse.Namespace) -> int:
-    from .benchmark import (ARCHITECTURES, Budget, BudgetExceeded, build_report,
+    from .benchmark import (Budget, BudgetExceeded, build_report,
                             call_stats, calls_for, estimate_case_cost,
                             measure_case_cost, prepare_cases, render,
                             resolve_architectures, run_batch,

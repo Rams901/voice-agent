@@ -1,9 +1,10 @@
 """Deterministic validation of high-stakes fields.
 
-This module addresses failure class B:
+This module addresses failure class B, the misheard high-stakes identifier:
 
-the flow has no control positioned to catch it, and the booking is committed
-and confirmed as if the value were right.
+a registration plate is transcribed with one character wrong, the flow has no
+control positioned to catch it, and the booking is committed and confirmed as
+if the value were right.
 
 The point of the module is that **no language model is involved**. Plates, VINs,
 phone numbers and mileages are validated by code, because these are the fields

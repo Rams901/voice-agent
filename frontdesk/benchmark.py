@@ -36,11 +36,11 @@ would be worse than no number.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any
 
 from .retell_client import RetellClient, RetellError, conversation_flow_engine
-from .scenarios import BENCHMARK_ARMS, benchmark_journeys
 
 # --------------------------------------------------------------------------- #
 # The two things being compared
@@ -49,8 +49,13 @@ from .scenarios import BENCHMARK_ARMS, benchmark_journeys
 # Resolved by id and validated by name. A benchmark that silently measured the
 # same agent twice would produce a clean, plausible, completely wrong report —
 # so `resolve_architectures` fetches each one and checks.
-
-ARCHITECTURES: dict[str, dict[str, str]] = {
+#
+# The ids below belong to the account this was built in. They are NOT portable:
+# a fresh Retell account has different ids, and a benchmark pointed at ids that
+# do not exist there fails in a confusing way. Override per architecture with
+# FRONTDESK_<ARCH>_AGENT_ID / FRONTDESK_<ARCH>_FLOW_ID (and put them in .env so
+# they survive), or re-point the defaults after deploying both architectures.
+_ARCHITECTURE_DEFAULTS: dict[str, dict[str, str]] = {
     "monolith": {
         "label": "Monolith (single flow)",
         "agent_id": "agent_e633333f5fae1f46ea35053778",
@@ -64,6 +69,24 @@ ARCHITECTURES: dict[str, dict[str, str]] = {
         "expect": "sub-flows",
     },
 }
+
+
+def _architectures() -> dict[str, dict[str, str]]:
+    """Apply FRONTDESK_<ARCH>_{AGENT,FLOW}_ID overrides to the defaults."""
+    resolved: dict[str, dict[str, str]] = {}
+    for name, spec in _ARCHITECTURE_DEFAULTS.items():
+        prefix = f"FRONTDESK_{name.upper()}"
+        resolved[name] = {
+            **spec,
+            "agent_id": os.environ.get(f"{prefix}_AGENT_ID", "").strip()
+            or spec["agent_id"],
+            "flow_id": os.environ.get(f"{prefix}_FLOW_ID", "").strip()
+            or spec["flow_id"],
+        }
+    return resolved
+
+
+ARCHITECTURES: dict[str, dict[str, str]] = _architectures()
 
 #: Published chat rates, USD per message, as of the pricing page at build time.
 #: These are used only to *estimate* batch cost, because the test API reports
@@ -224,7 +247,6 @@ def prepare_cases(client: RetellClient, arch: str, spec: dict[str, str],
     a single arm and wrong for two: while benchmarking, deleting the name a run
     is still using would corrupt the comparison.
     """
-    from .scenarios import build_test_case_payloads
 
     engine = conversation_flow_engine(spec["flow_id"])
     existing: dict[str, str] = {}

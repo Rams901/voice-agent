@@ -1,0 +1,16 @@
+# Normalise line endings. Shell scripts break on CRLF in ways that are hard to
+# diagnose, so they are pinned to LF regardless of platform.
+* text=auto eol=lf
+
+*.sh       text eol=lf
+Makefile   text eol=lf
+*.py       text eol=lf
+*.md       text eol=lf
+*.json     text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+
+*.png      binary
+*.jpg      binary
+*.pdf      binary
+*.ico      binary

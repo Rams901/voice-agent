@@ -347,8 +347,8 @@ Plus, at the integration boundary itself:
 
 ## 10. The skeleton — how to add a DMS
 
-This is the whole of the work, and it is worth being able to sketch it from
-from memory.
+This is the whole of the work, and it is short enough to sketch from
+memory.
 
 ```python
 """<Vendor> adapter, shaped after their public <Product> API."""

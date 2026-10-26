@@ -12,6 +12,30 @@ Everything below is about protecting the transaction.
 
 ---
 
+## Start here
+
+**New to the repo?** Read in this order:
+
+| # | Document | Why |
+|---|---|---|
+| 1 | [CONTRIBUTING.md](CONTRIBUTING.md) | Set up, run the tests, and the one architectural rule that governs every change |
+| 2 | [docs/onboarding-voice.md](docs/onboarding-voice.md) | The voice surface: what to tune, what to listen for, what is still open |
+| 3 | [Run it](#quick-start) below | Tool server → tunnel → deploy → call |
+| 4 | [Architecture](#architecture) | Why the flow looks the way it does |
+| 5 | [docs/dms-integration.md](docs/dms-integration.md) | Adding the next DMS |
+
+Status: **235 tests, no network** (~1s). `ruff check .` is clean. CI runs both on
+every push.
+
+```
+make install   # dependencies
+make test      # the suite, no credentials needed
+make check     # lint + tests, the same gate CI runs
+make plan      # prompt budget and architecture, no API calls
+```
+
+---
+
 ## What's here
 
 ```
@@ -41,25 +65,33 @@ frontdesk/
                        simulate / cleanup
 tool_server/app.py     mock DMS tool server (the deterministic half, no vendor names)
 scenarios/*.md         example conversations + the full variable model
+benchmarks/            architecture comparison: method, cost cap, and the
+                       result of the last run
 docs/dms-integration.md  the DMS landscape, the contract, and how to add the 10th
 docs/retell-semantics.md what transitions, dynamic variables and "fine-tuning"
                        actually do — sourced, with the parts Retell does not
                        document called out
+docs/onboarding-voice.md the voice surface: tuning, listening, open questions
 tests/                 guardrail, flow-structure, adapter-conformance and
                        diagram-normalizer tests
 web/index.html         browser call UI
 web/diagram/index.html zero-build React diagram (client / business / technical)
+.github/workflows/ci.yml  lint + tests on every push and pull request
 ```
 
 ## Quick start
 
 ```bash
-pip install -r requirements.txt
+make install                  # or: pip install -r requirements.txt
 cp .env.example .env          # then paste your RETELL_API_KEY
 
-python -m pytest -q           # 180 tests, no network
+make test                     # 235 tests, no network
 python -m frontdesk.cli plan  # the architecture + prompt budget, no API calls
 ```
+
+The test suite needs **no credentials and no network**. You can contribute fully
+without a Retell account; only `deploy`, `webcall`, `simulate` and `benchmark`
+talk to the API.
 
 Deploy and talk to it:
 
@@ -586,7 +618,7 @@ count matters more here than the total call duration.
 
 ## Limitations and honest caveats
 
-- **The DMS is mocked.** `dms.py` implements the canonical interface with
+- **The DMS is mocked.** `dms/memory.py` implements the canonical interface with
   in-memory data, including a deliberately ambiguous plate. Real Keyloop and
   CDK/Fortellis adapters would sit behind the same interface; the point is that
   nothing above the adapter changes.

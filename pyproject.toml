@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "frontdesk"
+version = "0.1.0"
+description = "A modular, guardrailed voice booking agent"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.27",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pydantic>=2.6",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[tool.setuptools]
+packages = ["frontdesk", "frontdesk.dms", "tool_server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    # Raised by pytest-asyncio when installed globally but unused here: no
+    # test in this suite is async.
+    "ignore::pytest.PytestDeprecationWarning",
+    "ignore::DeprecationWarning:starlette.testclient",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+# Deliberately narrow: correctness only. Adding isort/upgrade rules would
+# rewrite files across the repo, which buries real changes in noise.
+select = ["E4", "E7", "E9", "F"]
+ignore = [
+    # Long lines are common in the flow/narration tables; 100 is the guide,
+    # not a hard wall.
+    "E501",
+]

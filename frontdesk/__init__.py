@@ -12,7 +12,7 @@ The design it encodes:
 Layout:
     identifiers.py     deterministic validation of high-stakes fields (plates, VIN, ...)
     dealer_profiles.py dealer/market configuration as *data* (config over code)
-    dms.py             canonical domain model + in-memory mock DMS behind adapters
+    dms/               canonical domain model + adapters, one contract per vendor
     tools.py           Retell tool definitions that expose the deterministic layer
     flow.py            the modular conversation flow (router + skills + guardrails)
     retell_client.py   thin Retell REST client

@@ -6,6 +6,7 @@
 # Generated deployment state (contains Retell resource ids)
 .frontdesk.json
 .frontdesk-components.json
+.frontdesk-benchmark.json
 web/call.json
 
 # Your account's real unit prices — keep them out of the repo
@@ -20,8 +21,11 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.ruff_cache/
 .mypy_cache/
 *.egg-info/
+build/
+dist/
 
 # OS
 .DS_Store
