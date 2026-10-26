@@ -66,7 +66,6 @@ def build_component(dealer_id: str = "northgate-uk",
                     base_url: str = "https://tools.example.com") -> dict:
     nodes = {n["id"]: n for n in build_nodes(DEALERS[dealer_id])}
     picked = [copy.deepcopy(nodes[nid]) for nid in PLATE_NODES]
-    by_id = {n["id"]: n for n in picked}
 
     # A shared component is self-contained, so it must carry the tools its
     # function nodes call. Without them the API rejects it outright:

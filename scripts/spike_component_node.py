@@ -13,7 +13,6 @@ Run: python -m scripts.spike_component_node
 
 from __future__ import annotations
 
-import json
 import os
 
 import httpx

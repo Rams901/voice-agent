@@ -21,7 +21,6 @@ from frontdesk.flow import GLOBAL_PROMPT, build_flow_payload
 from frontdesk.snapshot import (
     CLUSTER_ROW_GAP,
     NODE_ROW_GAP,
-    _attach_skills,
     build_graph,
     contract_graph,
     layered_layout,

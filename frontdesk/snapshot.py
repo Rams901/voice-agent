@@ -880,7 +880,6 @@ def main(argv: list[str] | None = None) -> int:
     mechanical, so it is worth eyeballing the JSON before writing any React.
     """
     import argparse
-    import sys
 
     parser = argparse.ArgumentParser(prog="python -m frontdesk.snapshot")
     parser.add_argument("--agent-id", default=None)
@@ -911,7 +910,7 @@ def main(argv: list[str] | None = None) -> int:
               f"({metrics.get('deterministic_edge_share', 0) * 100:.0f}% of transitions)")
         print(f"prompt    : global {metrics.get('global_prompt_tokens')}t, "
               f"worst turn {metrics.get('worst_case_turn_context_tokens')}t")
-        print(f"skills    : " + ", ".join(
+        print("skills    : " + ", ".join(
             f"{s['label']}({s['node_count']})" for s in graph.get("skills", [])))
         cost = snapshot["metrics"]["cost"]
         print(f"cost      : {cost['source']} — "

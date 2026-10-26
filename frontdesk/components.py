@@ -289,7 +289,6 @@ def build_subflow(spec: Subflow, nodes: list[dict[str, Any]],
     # booking_done" — and the same trap waits on `booking_pending`,
     # `booking_failed` and `rental_done`.
     router_for = {outcome: f"exit_{spec.name}_{outcome}" for outcome in spec.outcomes}
-    terminal = {dest for dests in spec.outcomes.values() for dest in dests}
 
     picked: list[dict[str, Any]] = []
     for node_id in spec.nodes:
