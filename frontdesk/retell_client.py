@@ -118,7 +118,9 @@ class RetellClient:
             body["retell_llm_dynamic_variables"] = dynamic_variables
         if metadata:
             body["metadata"] = metadata
-        return self._request("POST", "/v2/create-web-call", json=body)
+        # v2 was removed on 2026-10-18. v3 returns connection details
+        # (transport, ice servers) as well as the access token.
+        return self._request("POST", "/v3/create-web-call", json=body)
 
     def get_call(self, call_id: str) -> dict[str, Any]:
         return self._request("GET", f"/get-call/{call_id}")

@@ -9,7 +9,7 @@ PY ?= python3
 .DEFAULT_GOAL := help
 
 .PHONY: help install test lint fmt check plan adapters diagram simulate \
-        benchmark doctor deploy webcall cleanup clean
+        benchmark doctor deploy webcall ui cleanup clean
 
 help:  ## show this list
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -54,6 +54,9 @@ deploy:  ## serve tool server, open a tunnel, deploy the flow and agent
 
 webcall:  ## start a browser call against the deployed agent
 	$(PY) -m frontdesk.cli webcall
+
+ui:  ## serve the call UI on http://127.0.0.1:5173
+	cd web/client && npm install && npm run dev
 
 simulate:  ## run the regression suite against the deployed flow
 	$(PY) -m frontdesk.cli simulate

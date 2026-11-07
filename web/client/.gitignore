@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.vite/
+.dev-server.log
+public/call.json

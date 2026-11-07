@@ -23,6 +23,36 @@ Everything below is about protecting the transaction.
 
 ---
 
+## The call surface
+
+The browser call is a React app in `web/client`. `python -m frontdesk.cli webcall`
+starts it on [http://127.0.0.1:5173](http://127.0.0.1:5173) and opens the
+session. `make ui` serves the same page without placing a call.
+
+The orb is a Three.js glass sphere. It is still until there is sound. The
+microphone shapes it while you talk, and the agent's audio shapes it while the
+agent talks. Loudness and the spread of frequencies move the surface. The words
+do not.
+
+![Resting](docs/images/call-idle.png)
+
+![While speech is coming in](docs/images/call-speaking.png)
+
+![The speaking shape, in motion](docs/images/call-speaking.gif)
+
+What arrived with the surface:
+
+- **Web calls use v3.** `POST /v2/create-web-call` was removed on 2026-10-18.
+  The page forwards `callId`, `transport`, and the ICE servers into the browser
+  SDK. A token alone is rejected once the transport is the gateway.
+- **`web/index.html` is the earlier static page.** `webcall` does not open it.
+- **`?preview=speak` and `?preview=listen`** play a stand-in wave, so the motion
+  can be looked at without spending a call. The loop above is that preview.
+
+Node is required for this UI. The rest of the repo is Python.
+
+---
+
 ## Start here
 
 **New to the repo?** Read in this order:
@@ -85,7 +115,8 @@ docs/retell-semantics.md what transitions, dynamic variables and "fine-tuning"
 docs/onboarding-voice.md the voice surface: tuning, listening, open questions
 tests/                 guardrail, flow-structure, adapter-conformance and
                        diagram-normalizer tests
-web/index.html         browser call UI
+web/client/            the call surface (React + Vite, audio-reactive orb)
+web/index.html         the earlier static call page; webcall no longer opens it
 web/diagram/index.html zero-build React diagram (client / business / technical)
 .github/workflows/ci.yml  lint + tests on every push and pull request
 ```
@@ -111,7 +142,7 @@ Deploy and talk to it:
 ./scripts/dev_tunnel.sh --deploy
 
 # 2. Call it from the browser
-python -m frontdesk.cli webcall     # prints a URL, opens web/index.html
+python -m frontdesk.cli webcall     # starts the React UI on :5173 and opens it
 
 # 3. Look at the flow as a diagram, for whoever is asking
 python -m frontdesk.cli diagram     # opens http://127.0.0.1:8100

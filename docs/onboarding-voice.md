@@ -84,6 +84,10 @@ cp .env.example .env         # RETELL_API_KEY
 python -m frontdesk.cli webcall
 ```
 
+That opens the React call UI on port 5173. The orb follows your microphone while
+you talk and the agent's audio while it talks. `?preview=speak` shows the
+motion without a session.
+
 Then call it and deliberately try to break it:
 
 | Try this | What you are testing |

@@ -13,9 +13,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
+import subprocess
 import sys
 import time
+import webbrowser
 from typing import Any
+from urllib.parse import quote
 
 from .config import STATE_FILE, load_settings
 from .dealer_profiles import get_dealer
@@ -271,6 +275,42 @@ def build_agent_payload(*, dealer_name: str, dealer: Any, flow_id: str,
 # webcall
 # --------------------------------------------------------------------------- #
 
+CLIENT_PORT = 5173
+
+
+def _port_open(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.2)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _ensure_call_ui() -> str:
+    """Start the React call UI on :5173 if it is not already up."""
+    client_dir = STATE_FILE.parent / "web" / "client"
+    base = f"http://127.0.0.1:{CLIENT_PORT}"
+    if _port_open(CLIENT_PORT):
+        return base
+    if not (client_dir / "package.json").exists():
+        raise SystemExit(f"Call UI is missing at {client_dir}")
+    if not (client_dir / "node_modules").is_dir():
+        subprocess.run(["npm", "install"], cwd=client_dir, check=True)
+    log_path = client_dir / ".dev-server.log"
+    with log_path.open("ab") as log:
+        subprocess.Popen(
+            ["npm", "run", "dev"],
+            cwd=client_dir,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    deadline = time.time() + 25
+    while time.time() < deadline:
+        if _port_open(CLIENT_PORT):
+            return base
+        time.sleep(0.2)
+    raise SystemExit(f"Call UI did not start. See {log_path}")
+
+
 def cmd_webcall(args: argparse.Namespace) -> int:
     settings = load_settings()
     state = load_state()
@@ -303,18 +343,35 @@ def cmd_webcall(args: argparse.Namespace) -> int:
     call_id = call["call_id"]
     print(f"\n  call_id      : {call_id}")
     print(f"  access_token : {token[:16]}…")
+    print(f"  transport    : {call.get('transport', '?')}")
 
+    # v3 answers with how to connect, not just a token. The page forwards
+    # call id, transport and ICE servers into startCall; a token alone is
+    # rejected once the transport is the gateway.
+    session = {
+        "accessToken": token,
+        "callId": call_id,
+        "transport": call.get("transport"),
+        "iceServers": call.get("ice_servers") or [],
+    }
     web_dir = STATE_FILE.parent / "web"
-    page = web_dir / "index.html"
+    payload = json.dumps(session)
     payload_file = web_dir / "call.json"
-    payload_file.write_text(json.dumps({"accessToken": token, "callId": call_id}))
+    payload_file.write_text(payload)
+    public_dir = web_dir / "client" / "public"
+    public_dir.mkdir(parents=True, exist_ok=True)
+    (public_dir / "call.json").write_text(payload)
 
-    # The token goes in the URL fragment, so the page also works when opened
-    # straight off the filesystem with no local server.
-    url = f"{page}#token={token}"
+    # The fragment is the session for this call. call.json is the fallback
+    # when the page is opened without one. The dealer name is display-only.
+    base = _ensure_call_ui()
+    dealer_q = quote(dealer.display_name, safe="")
+    session_q = quote(json.dumps(session, separators=(",", ":")), safe="")
+    url = f"{base}/?dealer={dealer_q}#session={session_q}"
     print(f"  token file   : {payload_file}")
-    print("\n  Open this in a browser (Chrome/Edge/Safari) and allow the mic:")
-    print(f"    open '{url}'")
+    print(f"\n  Call UI      : {base}/?dealer={dealer_q}")
+    print("  Allow the microphone when the browser asks.")
+    webbrowser.open(url)
     return 0
 
 

@@ -1,157 +1,804 @@
 <!doctype html>
+<!-- Earlier call surface. `python -m frontdesk.cli webcall` now opens web/client. -->
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Frontdesk — agent test call</title>
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#070910" />
+<title>Frontdesk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,460;9..144,560&family=Outfit:wght@340;460;520&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --bg: #0f1115; --panel: #171a21; --line: #262b36;
-    --text: #e7eaf0; --muted: #9aa4b6; --accent: #4f8cff; --ok: #37d39b; --bad: #ff6b6b;
+    --ink: #070910;
+    --paper: #f6f3ee;
+    --muted: rgba(246, 243, 238, .48);
+    --line: rgba(255, 255, 255, .1);
+    --amp: 0;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
-    margin: 0; padding: 32px 20px 64px; background: var(--bg); color: var(--text);
-    font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    color: var(--paper);
+    background: var(--ink);
+    font-family: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
+    font-weight: 340;
+    overflow: hidden;
   }
-  .wrap { max-width: 760px; margin: 0 auto; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
-  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  button {
-    background: var(--accent); color: #fff; border: 0; border-radius: 8px;
-    padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 46% 38% at 50% 36%, rgba(72, 132, 255, .22), transparent 62%),
+      radial-gradient(ellipse 38% 28% at 12% 92%, rgba(255, 148, 64, .09), transparent 58%),
+      radial-gradient(ellipse 32% 26% at 92% 84%, rgba(37, 99, 235, .14), transparent 60%),
+      radial-gradient(ellipse 80% 60% at 50% 120%, rgba(0, 0, 0, .55), transparent 50%);
   }
-  button:disabled { opacity: .45; cursor: not-allowed; }
-  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); }
-  .status { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
-  .dot.live { background: var(--ok); animation: pulse 1.4s infinite; }
-  .dot.err { background: var(--bad); }
-  @keyframes pulse { 50% { opacity: .3; } }
+
+  .stage {
+    position: relative;
+    z-index: 1;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    transition: transform .5s cubic-bezier(.2, .8, .2, 1);
+  }
+  @media (min-width: 1100px) {
+    body[data-drawer="open"] .stage { transform: translateX(-150px); }
+  }
+
+  .topbar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    padding: 22px 26px;
+    z-index: 2;
+  }
+  .topbar .ghost-btn { justify-self: end; }
+  .brand-block { display: flex; align-items: center; gap: 10px; justify-self: start; }
+  .brand-copy { display: flex; flex-direction: column; align-items: flex-start; }
+  .mark {
+    width: 16px; height: 16px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 32% 30%, #fff 0 2px, transparent 3px),
+      radial-gradient(circle at 40% 38%, #dbeafe, #60a5fa 36%, #1d4ed8 72%, #172554);
+    box-shadow: 0 0 16px rgba(96, 165, 250, .75);
+  }
+  .brand { display: block; font-weight: 520; letter-spacing: -.02em; font-size: 15px; }
+  .dealer {
+    display: block;
+    margin-top: 1px;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: .01em;
+  }
+  .timer {
+    display: flex;
+    visibility: hidden;
+    align-items: center;
+    gap: 8px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .12em;
+    font-size: 12px;
+    font-weight: 460;
+    color: rgba(246, 243, 238, .72);
+  }
+  body[data-state="listening"] .timer,
+  body[data-state="speaking"] .timer { visibility: visible; }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #fb7185;
+    box-shadow: 0 0 10px #fb7185;
+  }
+  body[data-state="speaking"] .live-dot { background: #93c5fd; box-shadow: 0 0 10px #93c5fd; }
+
+  .ghost-btn {
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .04);
+    color: rgba(246, 243, 238, .86);
+    border-radius: 999px;
+    padding: 8px 14px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 460;
+    letter-spacing: .01em;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    backdrop-filter: blur(16px);
+  }
+  .ghost-btn:hover { background: rgba(255, 255, 255, .08); }
+  .ghost-btn[aria-expanded="true"] { background: rgba(255, 255, 255, .1); color: white; }
+  .count {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, .14);
+    font-size: 11px;
+    display: grid;
+    place-items: center;
+  }
+  .count[hidden] { display: none; }
+
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 96px 24px 54px;
+    text-align: center;
+  }
+
+  .orb-wrap {
+    position: relative;
+    width: 280px;
+    height: 250px;
+    display: grid;
+    place-items: center;
+    margin-bottom: 8px;
+  }
+  .orb-wrap::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 6px;
+    width: 150px;
+    height: 24px;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse, rgba(96, 165, 250, calc(.28 + var(--amp) * .4)), transparent 70%);
+    filter: blur(6px);
+    pointer-events: none;
+  }
+  .bloom, .ring, .sphere { position: absolute; border-radius: 50%; }
+  .bloom {
+    width: 240px; height: 240px;
+    background: radial-gradient(circle, rgba(59, 130, 246, calc(.28 + var(--amp) * .35)), transparent 68%);
+    filter: blur(8px);
+  }
+  .ring {
+    width: 210px; height: 210px;
+    border: 1px solid rgba(191, 219, 254, .0);
+    opacity: 0;
+  }
+  body[data-state="speaking"] .ring,
+  body[data-state="listening"] .ring {
+    border-color: rgba(191, 219, 254, .28);
+    animation: ripple 3.2s ease-out infinite;
+  }
+  body[data-state="listening"] .ring { border-color: rgba(255, 255, 255, .16); animation-duration: 3.8s; }
+  .ring.r2 { animation-delay: 1.4s; }
+  .sphere {
+    width: 188px; height: 188px;
+    overflow: hidden;
+    transform: scale(calc(1 + var(--amp) * .1));
+    background:
+      radial-gradient(circle at 36% 30%, rgba(255, 255, 255, .95) 0 2%, rgba(255, 255, 255, 0) 16%),
+      radial-gradient(circle at 42% 40%, #e0f2fe 0%, #7dd3fc 16%, #3b82f6 40%, #1d4ed8 66%, #172554 100%);
+    box-shadow:
+      inset 0 -18px 40px rgba(15, 23, 42, .35),
+      inset 0 10px 24px rgba(255, 255, 255, .28),
+      0 20px 60px rgba(37, 99, 235, calc(.28 + var(--amp) * .35));
+    transition: transform .12s linear;
+  }
+  .spec {
+    position: absolute;
+    width: 140%;
+    height: 140%;
+    left: -20%;
+    top: -30%;
+    background: conic-gradient(from 210deg, transparent 0 62%, rgba(255, 255, 255, .55) 74%, transparent 84%);
+    mix-blend-mode: screen;
+    animation: sweep 16s linear infinite;
+    opacity: .55;
+  }
+  body[data-state="connecting"] .sphere { animation: breathe 1.15s ease-in-out infinite; }
+  body[data-state="ended"] .sphere,
+  body[data-state="error"] .sphere { filter: saturate(.35) brightness(.72); }
+  body[data-state="ended"] .bloom,
+  body[data-state="error"] .bloom { opacity: .4; }
+
+  .kicker {
+    margin: 18px 0 8px;
+    font-size: 11px;
+    font-weight: 520;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: rgba(191, 219, 254, .78);
+  }
+  .kicker[hidden] { display: none; }
+  h1 {
+    margin: 0;
+    max-width: 16em;
+    font-family: "Fraunces", "Iowan Old Style", Palatino, Georgia, serif;
+    font-weight: 460;
+    font-size: clamp(32px, 4.2vw, 46px);
+    line-height: 1.14;
+    letter-spacing: -.02em;
+    font-variation-settings: "opsz" 72, "SOFT" 30, "WONK" 1;
+  }
+  h1.dense {
+    font-size: clamp(22px, 2.8vw, 32px);
+    max-width: 22em;
+    font-variation-settings: "opsz" 36, "SOFT" 20;
+  }
+  .sub {
+    margin: 14px 0 0;
+    min-height: 1.4em;
+    max-width: 36em;
+    color: var(--muted);
+    font-size: 15.5px;
+  }
+  .sub.bad { color: #fda4af; }
+
+  .mic {
+    margin-top: 34px;
+    width: 78px; height: 78px;
+    border: 0;
+    border-radius: 50%;
+    background: #f4f6fb;
+    color: #14161c;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    box-shadow:
+      0 0 0 10px rgba(255, 255, 255, .045),
+      0 18px 40px rgba(0, 0, 0, .38);
+    transition: transform .15s ease, background .2s ease, color .2s ease;
+  }
+  .mic:hover { transform: scale(1.045); }
+  .mic:active { transform: scale(.98); }
+  .mic:focus-visible { outline: 2px solid #93c5fd; outline-offset: 4px; }
+  .mic:disabled { cursor: progress; opacity: .7; }
+  body[data-state="listening"] .mic,
+  body[data-state="speaking"] .mic {
+    background: #e11d48;
+    color: white;
+    box-shadow:
+      0 0 0 10px rgba(225, 29, 72, .14),
+      0 18px 40px rgba(0, 0, 0, .38);
+  }
+  .icon-end { display: none; }
+  body[data-state="listening"] .icon-mic,
+  body[data-state="speaking"] .icon-mic { display: none; }
+  body[data-state="listening"] .icon-end,
+  body[data-state="speaking"] .icon-end { display: block; }
+
+  .dock {
+    margin-top: 18px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 5px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    opacity: 0;
+    transform: translateY(6px);
+    pointer-events: none;
+    transition: opacity .3s ease, transform .3s ease, border-color .3s ease, background .3s ease;
+  }
+  body[data-state="listening"] .dock,
+  body[data-state="speaking"] .dock {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+    background: rgba(255, 255, 255, .045);
+    border-color: var(--line);
+    backdrop-filter: blur(18px);
+  }
+  .tool {
+    width: 38px; height: 38px;
+    border: 0; border-radius: 50%;
+    background: transparent;
+    color: rgba(246, 243, 238, .8);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+  .tool:hover { background: rgba(255, 255, 255, .08); }
+  .tool .slash { display: none; }
+  .tool[aria-pressed="true"] { background: rgba(255, 255, 255, .14); color: white; }
+  .tool[aria-pressed="true"] .slash { display: block; }
+  .tool:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
+
+  .drawer {
+    position: fixed;
+    z-index: 3;
+    top: 0; right: 0; bottom: 0;
+    width: min(400px, 100%);
+    transform: translateX(104%);
+    transition: transform .48s cubic-bezier(.2, .8, .2, 1);
+    background: rgba(10, 12, 18, .78);
+    border-left: 1px solid var(--line);
+    backdrop-filter: blur(22px);
+    display: flex;
+    flex-direction: column;
+    padding: 22px 22px 28px;
+  }
+  body[data-drawer="open"] .drawer { transform: none; }
+  .drawer header {
+    position: static;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 0 16px;
+  }
+  .drawer h2 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 520;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: rgba(246, 243, 238, .55);
+  }
+  .turns {
+    overflow: auto;
+    flex: 1;
+    padding-right: 4px;
+  }
+  .turns:empty::before {
+    content: "What you say, and what comes back, will gather here.";
+    display: block;
+    margin-top: 12px;
+    color: var(--muted);
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 22px;
+    line-height: 1.3;
+  }
+  .turn { padding: 16px 0; border-bottom: 1px solid rgba(255, 255, 255, .06); }
+  .turn .role {
+    font-size: 11px;
+    font-weight: 520;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: rgba(191, 219, 254, .7);
+    margin-bottom: 6px;
+  }
+  .turn.user .role { color: rgba(246, 243, 238, .4); }
+  .turn .text {
+    margin: 0;
+    font-family: "Fraunces", Georgia, serif;
+    font-size: 20px;
+    line-height: 1.35;
+    font-weight: 460;
+  }
+  .turn.user .text {
+    font-family: "Outfit", "Segoe UI", sans-serif;
+    font-size: 15px;
+    font-weight: 340;
+    color: rgba(246, 243, 238, .78);
+  }
+
+  .sheet {
+    position: fixed;
+    z-index: 4;
+    inset: 0;
+    background: rgba(0, 0, 0, .46);
+    display: grid;
+    align-items: end;
+    justify-content: center;
+    padding: 24px;
+  }
+  .sheet[hidden] { display: none; }
+  .sheet form {
+    width: min(460px, 100%);
+    margin-bottom: 6vh;
+    padding: 22px;
+    border-radius: 22px;
+    background: rgba(14, 16, 24, .92);
+    border: 1px solid var(--line);
+    backdrop-filter: blur(20px);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, .45);
+  }
+  .sheet h2 {
+    margin: 0 0 6px;
+    font-family: "Fraunces", Georgia, serif;
+    font-weight: 460;
+    font-size: 28px;
+  }
+  .sheet p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+  .sheet code {
+    font-size: 12px;
+    color: rgba(246, 243, 238, .8);
+  }
   textarea {
-    width: 100%; background: #0c0e13; color: var(--text); border: 1px solid var(--line);
-    border-radius: 8px; padding: 10px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-    resize: vertical; min-height: 72px;
+    width: 100%;
+    min-height: 84px;
+    resize: vertical;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(0, 0, 0, .35);
+    color: var(--paper);
+    padding: 12px;
+    font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
   }
-  .transcript { margin-top: 20px; max-height: 52vh; overflow-y: auto; }
-  .turn { padding: 10px 12px; border-radius: 10px; margin-bottom: 8px; border: 1px solid var(--line); }
-  .turn.agent { background: #141a26; }
-  .turn.user { background: #1a1620; }
-  .who { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
-  .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
-  .err { color: var(--bad); font-size: 13px; margin-top: 10px; }
-  code { background: #0c0e13; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  textarea:focus { outline: 2px solid #60a5fa; outline-offset: 1px; }
+  .sheet-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  .text-btn, .solid-btn {
+    border-radius: 999px;
+    padding: 9px 16px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 460;
+    cursor: pointer;
+  }
+  .text-btn { background: transparent; color: var(--muted); border: 0; }
+  .solid-btn { background: #f4f6fb; color: #14161c; border: 0; }
+
+  @keyframes ripple {
+    0% { transform: scale(.86); opacity: .55; }
+    100% { transform: scale(1.35); opacity: 0; }
+  }
+  @keyframes sweep { to { transform: rotate(360deg); } }
+  @keyframes breathe {
+    50% { transform: scale(1.035); filter: brightness(1.08); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spec, .ring, body[data-state="connecting"] .sphere,
+    .stage, .drawer, .dock, .mic { animation: none !important; transition: none !important; }
+  }
+  @media (max-width: 640px) {
+    .topbar { padding: 16px; }
+    .sphere { width: 150px; height: 150px; }
+    .bloom { width: 200px; height: 200px; }
+    .orb-wrap { width: 230px; height: 210px; }
+    h1 { font-size: 32px; }
+  }
 </style>
 </head>
-<body>
-<div class="wrap">
-  <h1>Frontdesk — agent test call</h1>
-  <p class="sub">
-    Live browser call against the deployed conversation flow. Grant microphone
-    access when prompted; audio is handled by Retell, so check the mic is not muted.
-  </p>
+<body data-state="idle" data-drawer="closed">
+  <div class="stage">
+    <header class="topbar">
+      <div class="brand-block">
+        <span class="mark" aria-hidden="true"></span>
+        <span class="brand-copy">
+          <span class="brand">Frontdesk</span>
+          <span class="dealer" id="dealer" hidden></span>
+        </span>
+      </div>
+      <div class="timer" id="timer"><span class="live-dot" aria-hidden="true"></span><span id="clock">0:00</span></div>
+      <button type="button" class="ghost-btn" id="transcriptBtn" aria-expanded="false" aria-controls="drawer">
+        Transcript
+        <span class="count" id="count" hidden>0</span>
+      </button>
+    </header>
 
-  <div class="panel">
-    <div class="row">
-      <button id="start">Start call</button>
-      <button id="stop" class="ghost" disabled>End call</button>
-      <span class="status"><span id="dot" class="dot"></span><span id="label">idle</span></span>
-    </div>
-
-    <div id="tokenBox" style="margin-top:16px; display:none;">
-      <p class="hint">No token found in the URL. Paste an access token from <code>python -m frontdesk.cli webcall</code>:</p>
-      <textarea id="token" placeholder="access_token…"></textarea>
-    </div>
-    <p id="error" class="err" style="display:none;"></p>
+    <main>
+      <div class="orb-wrap" aria-hidden="true">
+        <span class="bloom"></span>
+        <span class="ring r1"></span>
+        <span class="ring r2"></span>
+        <span class="sphere"><span class="spec"></span></span>
+      </div>
+      <p class="kicker" id="kicker" hidden></p>
+      <h1 id="headline">How can I help you today?</h1>
+      <p class="sub" id="sub">Tap the microphone and just start talking.</p>
+      <button type="button" class="mic" id="primary" aria-label="Start call">
+        <svg class="icon-mic" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+          <path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5.3-3a5.3 5.3 0 0 1-10.6 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-1.7z"/>
+        </svg>
+        <svg class="icon-end" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+          <rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/>
+        </svg>
+      </button>
+      <div class="dock">
+        <button type="button" class="tool" id="mute" aria-pressed="false" aria-label="Mute microphone" title="Mute">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
+          <path class="slash" d="M5 5.5l14 14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+        </svg>
+        </button>
+      </div>
+    </main>
   </div>
 
-  <div class="panel transcript" id="transcript" style="display:none;"></div>
-</div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <header>
+      <h2>Transcript</h2>
+      <button type="button" class="ghost-btn" id="closeDrawer">Close</button>
+    </header>
+    <div class="turns" id="turns"></div>
+  </aside>
+
+  <div class="sheet" id="sheet" hidden>
+    <form id="tokenForm">
+      <h2>Start a call</h2>
+      <p>Paste the access token from <code>python -m frontdesk.cli webcall</code>.</p>
+      <textarea id="token" spellcheck="false" autocomplete="off" placeholder="access token"></textarea>
+      <div class="sheet-actions">
+        <button type="button" class="text-btn" id="sheetCancel">Cancel</button>
+        <button type="submit" class="solid-btn">Begin</button>
+      </div>
+    </form>
+  </div>
 
 <script type="module">
+// Opened by `python -m frontdesk.cli webcall`.
+// The fragment carries `session` (v3 connection details) and an optional `dealer`.
+// Served over http, a sibling call.json supplies the session when the fragment doesn't.
 import { RetellWebClient } from "https://esm.sh/retell-client-js-sdk@3.0.1";
 
-const el = (id) => document.getElementById(id);
+const $ = (id) => document.getElementById(id);
+const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+const dealerName = hash.get("dealer") || "";
+let session = sessionFrom(hash.get("session") || hash.get("token"));
+let companion = null;
+
+function sessionFrom(raw) {
+  if (!raw) return null;
+  try {
+    const data = JSON.parse(raw);
+    if (data && typeof data === "object") return normalizeSession(data);
+  } catch { /* a bare access token */ }
+  return { accessToken: raw };
+}
+
+function normalizeSession(data) {
+  return {
+    accessToken: data.accessToken || data.access_token || "",
+    callId: data.callId || data.call_id || undefined,
+    transport: data.transport || undefined,
+    iceServers: data.iceServers || data.ice_servers || undefined,
+  };
+}
+let state = "idle";
+let muted = false;
+let startedAt = 0;
+let clockTimer = 0;
+let targetAmp = 0;
+let amp = 0;
+let lastAudio = 0;
 const client = new RetellWebClient();
 
-// Token arrives in the URL hash so the page works straight off the filesystem.
-const params = new URLSearchParams(location.hash.slice(1));
-const urlToken = params.get("token");
-if (!urlToken) el("tokenBox").style.display = "block";
-
-function setStatus(text, kind) {
-  el("label").textContent = text;
-  el("dot").className = "dot" + (kind ? " " + kind : "");
-  el("start").disabled = kind === "live";
-  el("stop").disabled = kind !== "live";
+if (dealerName) {
+  $("dealer").hidden = false;
+  $("dealer").textContent = dealerName;
+  document.title = "Frontdesk — " + dealerName;
 }
 
-function showError(message) {
-  el("error").style.display = "block";
-  el("error").textContent = message;
+if (location.protocol !== "file:") {
+  fetch("call.json", { cache: "no-store" })
+    .then((res) => res.ok ? res.json() : null)
+    .then((data) => { companion = data ? normalizeSession(data) : null; })
+    .catch(() => {});
 }
 
-function addTurn(role, content) {
-  const box = el("transcript");
-  box.style.display = "block";
-  const last = box.lastElementChild;
-  // Retell streams partial content, so update the in-flight turn in place.
-  if (last && last.dataset.role === role && last.dataset.streaming === "1") {
-    last.querySelector(".text").textContent = content;
+function currentSession() {
+  const typed = $("token").value.trim();
+  return session || (typed ? sessionFrom(typed) : null) || companion;
+}
+
+function setState(next) {
+  state = next;
+  document.body.dataset.state = next;
+  const live = next === "listening" || next === "speaking";
+  $("primary").disabled = next === "connecting";
+  $("primary").setAttribute("aria-label", live ? "End call" : "Start call");
+  if (next === "idle" || next === "ended" || next === "error") {
+    if (muted) setMuted(false);
+  }
+}
+
+function setStatus(text, bad) {
+  $("sub").textContent = text;
+  $("sub").classList.toggle("bad", !!bad);
+}
+
+function setLine(who, text) {
+  $("kicker").hidden = false;
+  $("kicker").textContent = who;
+  const headline = $("headline");
+  if (headline.textContent !== text) headline.textContent = text;
+  headline.classList.toggle("dense", text.length > 90);
+}
+
+function showPrompt() {
+  $("kicker").hidden = true;
+  $("headline").textContent = "How can I help you today?";
+  $("headline").classList.remove("dense");
+  setStatus("Tap the microphone and just start talking.");
+}
+
+function openSheet() { $("sheet").hidden = false; $("token").focus(); }
+function closeSheet() { $("sheet").hidden = true; }
+
+function setDrawer(open) {
+  document.body.dataset.drawer = open ? "open" : "closed";
+  $("transcriptBtn").setAttribute("aria-expanded", open ? "true" : "false");
+  $("drawer").setAttribute("aria-hidden", open ? "false" : "true");
+}
+
+function renderTurns(items) {
+  const box = $("turns");
+  box.replaceChildren();
+  for (const item of items) {
+    const role = item.role === "agent" ? "agent" : "user";
+    const turn = document.createElement("article");
+    turn.className = "turn " + role;
+    const who = document.createElement("div");
+    who.className = "role";
+    who.textContent = role === "agent" ? "Frontdesk" : "You";
+    const text = document.createElement("p");
+    text.className = "text";
+    text.textContent = item.content || item.text || "";
+    turn.append(who, text);
+    box.append(turn);
+  }
+  box.scrollTop = box.scrollHeight;
+  const n = items.length;
+  $("count").hidden = n === 0;
+  $("count").textContent = String(n);
+  const last = items[items.length - 1];
+  const said = last && (last.content || last.text);
+  if (said && (state === "listening" || state === "speaking" || state === "connecting")) {
+    setLine(last.role === "agent" ? "Frontdesk" : "You", said);
+  }
+}
+
+function turnsOf(update) {
+  if (!update) return null;
+  if (Array.isArray(update.transcript)) return update.transcript;
+  if (Array.isArray(update.transcript_object)) return update.transcript_object;
+  return null;
+}
+
+function fmt(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m + ":" + String(s).padStart(2, "0");
+}
+
+function startClock() {
+  startedAt = Date.now();
+  clearInterval(clockTimer);
+  $("clock").textContent = "0:00";
+  clockTimer = setInterval(() => {
+    $("clock").textContent = fmt(Math.floor((Date.now() - startedAt) / 1000));
+  }, 500);
+}
+
+function stopClock() {
+  clearInterval(clockTimer);
+  if (!startedAt) return "0:00";
+  return fmt(Math.floor((Date.now() - startedAt) / 1000));
+}
+
+function humanError(err) {
+  const msg = String(err?.message || err || "");
+  if (/notallowed|permission|denied/i.test(msg)) {
+    return "The microphone is blocked. Allow it for this page and try again.";
+  }
+  if (/token|expired|401|403|unauthorized/i.test(msg)) {
+    return "This call pass has already been used. Run webcall again for a fresh one.";
+  }
+  return msg || "The call didn't start.";
+}
+
+async function begin() {
+  const next = currentSession();
+  if (!next?.accessToken) { openSheet(); return; }
+  closeSheet();
+  session = next;
+  try {
+    setState("connecting");
+    setStatus("Connecting…");
+    const config = { accessToken: next.accessToken, emitRawAudioSamples: true };
+    if (next.callId) config.callId = next.callId;
+    if (next.transport) config.transport = next.transport;
+    if (next.iceServers && next.iceServers.length) config.iceServers = next.iceServers;
+    await client.startCall(config);
+    setState("listening");
+    setStatus("Listening");
+    startClock();
+  } catch (err) {
+    setState("error");
+    setStatus(humanError(err), true);
+  }
+}
+
+function endCall() {
+  try { client.stopCall(); } catch { /* already closed */ }
+  const duration = stopClock();
+  setState("ended");
+  $("kicker").hidden = false;
+  $("kicker").textContent = "Frontdesk";
+  $("headline").textContent = "That's everything.";
+  $("headline").classList.remove("dense");
+  setStatus(duration === "0:00" ? "Call ended." : "Call ended · " + duration);
+}
+
+function setMuted(next) {
+  muted = next;
+  try { next ? client.mute() : client.unmute(); } catch { /* not in a call */ }
+  $("mute").setAttribute("aria-pressed", next ? "true" : "false");
+  $("mute").setAttribute("aria-label", next ? "Unmute microphone" : "Mute microphone");
+}
+
+client.on("call_started", () => { setState("listening"); setStatus("Listening"); });
+client.on("call_ready", () => { if (state === "connecting") { setState("listening"); setStatus("Listening"); } });
+client.on("agent_start_talking", () => { setState("speaking"); setStatus(""); });
+client.on("agent_stop_talking", () => { setState("listening"); setStatus("Listening"); targetAmp = 0; });
+client.on("call_ended", () => {
+  if (state === "ended") return;
+  const duration = stopClock();
+  setState("ended");
+  $("kicker").hidden = false;
+  $("kicker").textContent = "Frontdesk";
+  $("headline").textContent = "That's everything.";
+  setStatus(duration === "0:00" ? "Call ended." : "Call ended · " + duration);
+});
+client.on("error", (err) => {
+  setState("error");
+  setStatus(humanError(err), true);
+});
+client.on("update", (update) => {
+  const items = turnsOf(update);
+  if (items) renderTurns(items);
+});
+client.on("audio", (samples) => {
+  if (!samples || !samples.length) return;
+  let sum = 0;
+  const step = Math.max(1, Math.floor(samples.length / 240));
+  let n = 0;
+  for (let i = 0; i < samples.length; i += step) {
+    const v = samples[i];
+    sum += v * v;
+    n++;
+  }
+  if (!n) return;
+  targetAmp = Math.min(1, Math.sqrt(sum / n) * 7);
+  lastAudio = performance.now();
+});
+
+function frame(now) {
+  if (state === "speaking" && now - lastAudio > 180) {
+    targetAmp = 0.28 + 0.18 * Math.sin(now / 190);
+  } else if (state !== "speaking") {
+    targetAmp *= 0.9;
+  }
+  amp += (targetAmp - amp) * 0.2;
+  document.documentElement.style.setProperty("--amp", amp.toFixed(3));
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+$("primary").addEventListener("click", () => {
+  if (state === "listening" || state === "speaking") endCall();
+  else if (state !== "connecting") begin();
+});
+$("mute").addEventListener("click", () => setMuted(!muted));
+$("transcriptBtn").addEventListener("click", () => setDrawer(document.body.dataset.drawer !== "open"));
+$("closeDrawer").addEventListener("click", () => setDrawer(false));
+$("sheetCancel").addEventListener("click", closeSheet);
+$("sheet").addEventListener("click", (event) => { if (event.target === $("sheet")) closeSheet(); });
+$("tokenForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!$("token").value.trim() && !companion && !session) return;
+  begin();
+});
+
+document.addEventListener("keydown", (event) => {
+  const typing = event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement;
+  if (event.key === "Escape") {
+    if (!$("sheet").hidden) closeSheet();
+    else setDrawer(false);
     return;
   }
-  for (const t of box.children) t.dataset.streaming = "0";
-  const turn = document.createElement("div");
-  turn.className = "turn " + role;
-  turn.dataset.role = role;
-  turn.dataset.streaming = "1";
-  turn.innerHTML = `<div class="who">${role === "agent" ? "Agent" : "Caller"}</div>
-                    <div class="text"></div>`;
-  turn.querySelector(".text").textContent = content;
-  box.appendChild(turn);
-  box.scrollTop = box.scrollHeight;
-}
-
-client.on("call_started", () => { setStatus("live", "live"); el("error").style.display = "none"; });
-client.on("call_ready",  () => setStatus("live", "live"));
-client.on("call_ended",  () => setStatus("ended"));
-client.on("error", (e) => { setStatus("error", "err"); showError(String(e?.message || e)); });
-
-// Retell emits incremental transcript updates; render the latest of each role.
-client.on("update", (update) => {
-  if (!update || !Array.isArray(update.transcript)) return;
-  el("transcript").innerHTML = "";
-  for (const item of update.transcript) {
-    const role = item.role === "agent" ? "agent" : "user";
-    const turn = document.createElement("div");
-    turn.className = "turn " + role;
-    turn.innerHTML = `<div class="who">${role === "agent" ? "Agent" : "Caller"}</div>
-                      <div class="text"></div>`;
-    turn.querySelector(".text").textContent = item.content || "";
-    el("transcript").appendChild(turn);
+  if (typing) return;
+  if (event.key === "t" || event.key === "T") setDrawer(document.body.dataset.drawer !== "open");
+  if ((event.key === "m" || event.key === "M") && (state === "listening" || state === "speaking")) {
+    setMuted(!muted);
   }
-  el("transcript").style.display = "block";
-  el("transcript").scrollTop = el("transcript").scrollHeight;
-});
-
-el("start").addEventListener("click", async () => {
-  const token = urlToken || el("token").value.trim();
-  if (!token) { showError("Paste an access token first."); return; }
-  try {
-    setStatus("connecting…");
-    await client.startCall({ accessToken: token });
-    setStatus("live", "live");
-  } catch (e) {
-    setStatus("error", "err");
-    showError(String(e?.message || e));
-  }
-});
-
-el("stop").addEventListener("click", () => {
-  client.stopCall();
-  setStatus("ended");
 });
 </script>
 </body>
