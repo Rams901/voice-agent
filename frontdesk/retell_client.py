@@ -45,6 +45,39 @@ class RetellClient:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
+    def _collect(self, method: str, path: str, *, limit: int,
+                 body: dict[str, Any] | None = None,
+                 limit_in: str = "query") -> list[dict[str, Any]]:
+        """Page a versioned list endpoint into the flat list callers expect.
+
+        v2/v3 list routes return `{items, has_more, pagination_key}` instead of
+        an array. Most take `limit` as a query parameter. List-calls takes it,
+        and the next-page key, in the body.
+        """
+        items: list[dict[str, Any]] = []
+        pagination_key: str | None = None
+        while len(items) < limit:
+            page_limit = min(1000, limit - len(items))
+            if limit_in == "body":
+                payload = dict(body or {})
+                payload["limit"] = page_limit
+                if pagination_key:
+                    payload["pagination_key"] = pagination_key
+                page = self._request(method, path, json=payload)
+            else:
+                params: dict[str, Any] = {"limit": page_limit}
+                if pagination_key:
+                    params["pagination_key"] = pagination_key
+                page = self._request(method, path, params=params, json=body)
+            if isinstance(page, list):
+                return page[:limit]
+            batch = page.get("items") or []
+            items.extend(batch)
+            if not page.get("has_more") or not page.get("pagination_key"):
+                break
+            pagination_key = page["pagination_key"]
+        return items[:limit]
+
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         response = self._client.request(method, path, **kwargs)
         if response.status_code >= 400:
@@ -90,8 +123,8 @@ class RetellClient:
         self._request("DELETE", f"/delete-conversation-flow/{flow_id}")
 
     def list_conversation_flows(self, limit: int = 100) -> list[dict[str, Any]]:
-        return self._request("GET", "/list-conversation-flows",
-                             params={"limit": limit})
+        # GET /list-conversation-flows was removed on 2026-06-15.
+        return self._collect("GET", "/v2/list-conversation-flows", limit=limit)
 
     # ---------------------------------------------------------------- agents #
     def create_agent(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -107,7 +140,22 @@ class RetellClient:
         self._request("DELETE", f"/delete-agent/{agent_id}")
 
     def list_agents(self, limit: int = 100) -> list[dict[str, Any]]:
-        return self._request("GET", "/list-agents", params={"limit": limit})
+        """Voice agents on the account.
+
+        GET /list-agents was removed on 2026-07-31. The replacement returns a
+        page (`items`, `has_more`, `pagination_key`) and mixes voice and chat
+        unless the channel filter is set. Callers still receive a flat list.
+        """
+        return self._collect(
+            "POST",
+            "/v2/list-agents",
+            limit=limit,
+            body={
+                "filter_criteria": {
+                    "channel": {"type": "string", "op": "eq", "value": "voice"},
+                }
+            },
+        )
 
     # ----------------------------------------------------------------- calls #
     def create_web_call(self, agent_id: str,
@@ -126,8 +174,9 @@ class RetellClient:
         return self._request("GET", f"/get-call/{call_id}")
 
     def list_calls(self, limit: int = 50, **filters: Any) -> list[dict[str, Any]]:
-        params = {"limit": limit, **filters}
-        return self._request("POST", "/v2/list-calls", json=params)
+        # POST /v2/list-calls was removed on 2026-06-15.
+        return self._collect("POST", "/v3/list-calls", limit=limit,
+                             body=filters or None, limit_in="body")
 
     # -------------------------------------------------------------- testing #
     def create_test_case_definition(self, payload: dict[str, Any]) -> dict[str, Any]:
